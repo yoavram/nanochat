@@ -20,6 +20,4 @@ See [README.md](README.md) for the user-facing overview, setup instructions, and
 
 **Checkpoint chain:** `bpe-tokenizer.ipynb` → `bpe_tokenizer.pkl`; `nanochat.ipynb` → `nanochat_checkpoint.pkl`; `nanochat-sft.ipynb` → `nanochat_sft_checkpoint.pkl`; `nanochat-grpo.ipynb` → `nanochat_grpo_checkpoint.pkl`.
 
-**microgptjax**: Pedagogical — `Value` class for scalar reverse-mode AD → tiny GPT → JAX equivalent.
-
 **minisweagent**: Ollama-based agents. Tool registry pattern, ReAct (Reasoning-Acting-Observing) loop.
