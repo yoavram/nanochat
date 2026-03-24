@@ -1,0 +1,11 @@
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+
+# Jupyter
+.ipynb_checkpoints/
+*_executed.ipynb
+
+# Checkpoints and data (generated at runtime)
+*.pkl
+*.txt
