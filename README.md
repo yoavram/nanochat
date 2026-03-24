@@ -12,7 +12,7 @@ The notebooks form a sequence. Run them in order.
 - [`nanochat-grpo.ipynb`](nanochat-grpo.ipynb) — GRPO reinforcement learning: group sampling, clipped surrogate, KL penalty, verifiable reward
 - [`minisweagent.ipynb`](minisweagent.ipynb) — LLM agents with Ollama: ReAct loop, tool registry, mini-SWE-agent architecture
 
-Additional notebooks kept for reference: `nanochat-torch.ipynb` (PyTorch equivalent), `microgptjax.ipynb` (scalar autograd from scratch).
+Additional notebook kept for reference: `microgptjax.ipynb` (scalar autograd from scratch).
 
 ## Setup
 
