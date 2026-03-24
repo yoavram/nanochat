@@ -45,8 +45,11 @@ Each notebook saves a checkpoint that the next notebook loads:
 
 ```
 bpe-tokenizer.ipynb  →  bpe_tokenizer.pkl
+                                ↓
 nanochat.ipynb       →  nanochat_checkpoint.pkl
+                                ↓
 nanochat-sft.ipynb   →  nanochat_sft_checkpoint.pkl
+                                ↓
 nanochat-grpo.ipynb  →  nanochat_grpo_checkpoint.pkl
 ```
 
