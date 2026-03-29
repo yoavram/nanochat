@@ -9,3 +9,4 @@
 # Checkpoints and data (generated at runtime)
 *.pkl
 *.txt
+*.npy
