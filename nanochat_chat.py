@@ -48,7 +48,7 @@ def causal_mask(T):
     return jnp.where(jnp.tril(jnp.ones((T, T))), 0., -jnp.inf)
 
 def attention_forward(p, x, cos, sin, mask):
-    B, T, d = x.shape; H = p['n_heads']; hd = d // H
+    B, T, d = x.shape; hd = cos.shape[-1]; H = d // hd
     Q, K, V = x @ p['Wq'], x @ p['Wk'], x @ p['Wv']
     def sh(t): return t.reshape(B, T, H, hd).transpose(0, 2, 1, 3)
     Q, K, V = sh(Q), sh(K), sh(V)
