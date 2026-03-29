@@ -1,4 +1,7 @@
 import pickle
+import re
+
+from tqdm.auto import tqdm
 
 
 def bpe_train(text, vocab_size=512, verbose=True):
@@ -12,14 +15,30 @@ def bpe_train(text, vocab_size=512, verbose=True):
     chars = sorted(set(text))
     vocab = chars[:]
     encoder = {c: i for i, c in enumerate(chars)}
-    ids = [encoder[c] for c in text]
     merges = []
 
+    # Split into words and count frequencies — standard BPE optimization.
+    # Iterates over unique words (~500K) instead of the full text (~2B chars).
+    # Merges cannot cross word boundaries, matching GPT-2's approach.
+    words = re.findall(r'\S+|\s+', text)
+    word_freq = {}
+    for w in words:
+        word_freq[w] = word_freq.get(w, 0) + 1
+    del words
+
+    # Convert each unique word to a tuple of token ids
+    word_ids = {w: tuple(encoder[c] for c in w) for w in word_freq}
+
+    pbar = tqdm(total=vocab_size - len(vocab), desc="BPE training",
+                disable=not verbose)
+
     while len(vocab) < vocab_size:
-        # Count adjacent pairs
+        # Count adjacent pairs, weighted by word frequency
         counts = {}
-        for a, b in zip(ids, ids[1:]):
-            counts[(a, b)] = counts.get((a, b), 0) + 1
+        for w, freq in word_freq.items():
+            ids = word_ids[w]
+            for a, b in zip(ids, ids[1:]):
+                counts[(a, b)] = counts.get((a, b), 0) + freq
         if not counts:
             break
 
@@ -31,23 +50,27 @@ def bpe_train(text, vocab_size=512, verbose=True):
         encoder[new_tok] = new_id
         merges.append(best)
 
-        # Apply merge to the token stream
-        merged, i = [], 0
-        while i < len(ids):
-            if i < len(ids) - 1 and (ids[i], ids[i + 1]) == best:
-                merged.append(new_id)
-                i += 2
-            else:
-                merged.append(ids[i])
-                i += 1
-        ids = merged
+        # Apply merge to affected words
+        for w in word_freq:
+            ids = word_ids[w]
+            merged, i = [], 0
+            while i < len(ids):
+                if i < len(ids) - 1 and (ids[i], ids[i + 1]) == best:
+                    merged.append(new_id)
+                    i += 2
+                else:
+                    merged.append(ids[i])
+                    i += 1
+            word_ids[w] = tuple(merged)
 
-        if verbose and len(vocab) % 64 == 0:
-            print(f"  vocab={len(vocab):4d}  tokens={len(ids):,}")
+        pbar.update(1)
+
+    pbar.close()
 
     if verbose:
+        total_tokens = sum(len(word_ids[w]) * f for w, f in word_freq.items())
         print(f"Training complete: vocab_size={len(vocab)}, "
-              f"tokens={len(ids):,} (compression ratio {len(text)/len(ids):.2f}×)")
+              f"tokens={total_tokens:,} (compression ratio {len(text)/total_tokens:.2f}×)")
     return vocab, merges
 
 
