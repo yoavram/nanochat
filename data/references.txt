@@ -1,0 +1,28 @@
+References
+
+[1] Wei, J., Wang, X., Schuurmans, D., Bosma, M., Chi, E., Le, Q., & Zhou, D. (2022).
+    Chain-of-thought prompting elicits reasoning in large language models. NeurIPS 2022.
+    arXiv:2201.11903
+
+[2] Nakano, R., Hilton, J., Balwit, A., Wu, J., Glaese, A., Schulman, J., & others (2022).
+    WebGPT: Browser-assisted question-answering with human feedback.
+    arXiv:2112.09332
+
+[3] Ahn, M., Brohan, A., Brown, N., Chebotar, Y., Cortes, O., & others (2022).
+    Do As I Can, Not As I Say: Grounding Language in Robotic Affordances.
+    arXiv:2204.01691
+
+[4] Karpas, E., Abend, O., Belinkov, Y., Lenz, B., Lieber, O., & others (2022).
+    MRKL Systems: A modular, neuro-symbolic architecture that combines large language models,
+    external knowledge sources and discrete reasoning. arXiv:2205.00445
+
+[5] Brown, T., Mann, B., Ryder, N., Subbiah, M., Kaplan, J., & others (2020).
+    Language models are few-shot learners. NeurIPS 2020.
+    (Technical report, no arXiv preprint)
+
+[6] Schick, T., Dwivedi-Yu, J., Dessi, R., Raileanu, R., Lomeli, M., Zettlemoyer, L.,
+    Cancedda, N., & Scialom, T. (2023). Toolformer: Language models can teach themselves
+    to use tools. arXiv:2302.04761
+
+[7] OpenAI (2023). GPT-4 Technical Report.
+    (Published directly, no arXiv preprint)

@@ -9,4 +9,8 @@
 # Checkpoints and data (generated at runtime)
 *.pkl
 *.txt
+!data/abstract.txt
+!data/arxiv_example.xml
+!data/references.txt
+!data/stopwords.txt
 *.npy
