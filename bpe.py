@@ -1,6 +1,10 @@
 import pickle
 import re
 
+from tqdm.auto import tqdm
+
+SEGMENT_RE = re.compile(r'\S+|\s+')
+
 
 def bpe_train(text, vocab_size=512, verbose=True):
     """
@@ -71,12 +75,9 @@ def bpe_train(text, vocab_size=512, verbose=True):
     return vocab, merges
 
 
-def bpe_encode(text, vocab, merges):
-    """Convert text to a list of token ids using the given vocab and merge rules."""
-    encoder = {t: i for i, t in enumerate(vocab)}
-    ids = [encoder.get(c, 0) for c in text]
-    for a, b in merges:
-        new_id = encoder[vocab[a] + vocab[b]]
+def _apply_bpe_merges(ids, merge_rules):
+    """Apply merge rules to one regex segment."""
+    for a, b, new_id in merge_rules:
         merged, i = [], 0
         while i < len(ids):
             if i < len(ids) - 1 and ids[i] == a and ids[i + 1] == b:
@@ -86,7 +87,29 @@ def bpe_encode(text, vocab, merges):
                 merged.append(ids[i])
                 i += 1
         ids = merged
-    return ids
+    return tuple(ids)
+
+
+def bpe_encode(text, vocab, merges, verbose=None):
+    """Convert text to a list of token ids using the given vocab and merge rules."""
+    encoder = {t: i for i, t in enumerate(vocab)}
+    merge_rules = [(a, b, encoder[vocab[a] + vocab[b]]) for a, b in merges]
+
+    # Training merges are learned within regex segments, so we can encode each
+    # segment independently and cache repeated segments across the corpus.
+    segments = SEGMENT_RE.findall(text)
+    unique_segments = list(dict.fromkeys(segments))
+    show_progress = len(unique_segments) > 1000 if verbose is None else verbose
+
+    encoded_cache = {}
+    for segment in tqdm(unique_segments, desc="BPE encoding", disable=not show_progress):
+        ids = [encoder.get(c, 0) for c in segment]
+        encoded_cache[segment] = _apply_bpe_merges(ids, merge_rules)
+
+    encoded = []
+    for segment in segments:
+        encoded.extend(encoded_cache[segment])
+    return encoded
 
 
 def bpe_decode(ids, vocab):
