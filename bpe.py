@@ -1,8 +1,6 @@
 import pickle
 import re
 
-from tqdm.auto import tqdm
-
 
 def bpe_train(text, vocab_size=512, verbose=True):
     """
@@ -29,8 +27,7 @@ def bpe_train(text, vocab_size=512, verbose=True):
     # Convert each unique word to a tuple of token ids
     word_ids = {w: tuple(encoder[c] for c in w) for w in word_freq}
 
-    pbar = tqdm(total=vocab_size - len(vocab), desc="BPE training",
-                disable=not verbose)
+    n_merges = vocab_size - len(vocab)
 
     while len(vocab) < vocab_size:
         # Count adjacent pairs, weighted by word frequency
@@ -63,9 +60,9 @@ def bpe_train(text, vocab_size=512, verbose=True):
                     i += 1
             word_ids[w] = tuple(merged)
 
-        pbar.update(1)
-
-    pbar.close()
+        if verbose and (len(vocab) - len(chars)) % 100 == 0:
+            done = len(vocab) - len(chars)
+            print(f"  {done}/{n_merges} merges")
 
     if verbose:
         total_tokens = sum(len(word_ids[w]) * f for w, f in word_freq.items())

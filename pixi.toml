@@ -10,9 +10,6 @@ version = "0.1.0"
 [dependencies]
 python = ">=3.14.3,<3.15"
 
-[pypi-dependencies]
-tqdm = ">=4.67.3, <5"
-
 [target.osx-arm64.pypi-dependencies]
 jax = ">=0.9.2, <0.10"
 
