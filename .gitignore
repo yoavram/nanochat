@@ -16,4 +16,5 @@ __pycache__/
 !data/arxiv_example.xml
 !data/references.txt
 !data/stopwords.txt
+!data/shakespear3.txt
 *.npy
