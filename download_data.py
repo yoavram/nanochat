@@ -1,8 +1,24 @@
 import urllib.request
 from pathlib import Path
+import os
 
-BASE_URL = "https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main"
+# POKER
 
+def download_poker(data_dir):
+    base_url = 'https://archive.ics.uci.edu/ml/machine-learning-databases/poker'
+    files = {
+        'poker-hand-training-true.data': f'{base_url}/poker-hand-training-true.data',
+        'poker-hand-testing.data': f'{base_url}/poker-hand-testing.data',
+    }
+    
+    for fname, url in files.items():
+        path = os.path.join(data_dir, fname)
+        if not os.path.exists(path):
+            print(f'Downloading {fname}...')
+            urllib.request.urlretrieve(url, path)
+            print('Done.')
+            
+# TinyStories
 FILES = [
     # "TinyStories-valid.txt",        # 19.4 MB
     "TinyStoriesV2-GPT4-valid.txt", # 22.5 MB
@@ -10,7 +26,8 @@ FILES = [
     "TinyStoriesV2-GPT4-train.txt", # 2.23 GB
 ]
 
-def download(filename: str, dest_dir: Path = Path(".")) -> None:
+def download_tinystories(filename: str, dest_dir: Path = Path(".")) -> None:
+    BASE_URL = "https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main"
     url = f"{BASE_URL}/{filename}?download=true"
     dest = dest_dir / filename
     if dest.exists():
@@ -30,5 +47,6 @@ def download(filename: str, dest_dir: Path = Path(".")) -> None:
 if __name__ == "__main__":
     dest_dir = Path("data")
     dest_dir.mkdir(exist_ok=True)
+    download_poker(dest_dir)
     for f in FILES:
-        download(f, dest_dir)
+        download_tinystories(f, dest_dir)
