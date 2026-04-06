@@ -4,6 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 See [README.md](README.md) for the user-facing overview, setup instructions, and notebook descriptions.
 
+Don't add co-author note to git commit messages.
+
+Use Notebook tool to read/write notebooks.
+
 ## Environment
 
 `pixi install` then `pixi run jupyter lab`. Platform: `osx-arm64`, Python 3.14. Key deps: JAX, NumPy, Matplotlib, Pandas.
