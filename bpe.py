@@ -4,6 +4,7 @@ import re
 from tqdm.auto import tqdm
 
 SEGMENT_RE = re.compile(r'\S+|\s+')
+DEFAULT_TOKENIZER_PATH = 'checkpoints/bpe_tokenizer.pkl'
 
 
 def bpe_train(text, vocab_size=512, verbose=True):
@@ -117,14 +118,14 @@ def bpe_decode(ids, vocab):
     return ''.join(vocab[i] for i in ids if 0 <= i < len(vocab))
 
 
-def bpe_save(vocab, merges, path):
+def bpe_save(vocab, merges, path=DEFAULT_TOKENIZER_PATH):
     """Save vocab and merges to a pickle file."""
     with open(path, 'wb') as f:
         pickle.dump({'vocab': vocab, 'merges': merges}, f)
     print(f"Saved tokenizer to {path}")
 
 
-def bpe_load(path):
+def bpe_load(path=DEFAULT_TOKENIZER_PATH):
     """Load vocab and merges from a pickle file."""
     with open(path, 'rb') as f:
         state = pickle.load(f)
