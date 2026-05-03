@@ -51,8 +51,9 @@ def bpe_train(text, vocab_size=512, verbose=True):
         vocab.append(new_tok)
         encoder[new_tok] = new_id
         merges.append(best)
-        print("Merging pair: {} + {} -> {} ({} occurrences)".format(
-            vocab[best[0]], vocab[best[1]], new_tok, counts[best]))
+        if verbose:
+            print("Merging pair: {} + {} -> {} ({} occurrences)".format(
+                vocab[best[0]], vocab[best[1]], new_tok, counts[best]))
 
         # Apply merge to affected words
         for w in word_freq:
