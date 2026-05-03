@@ -58,9 +58,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--transformer-eval-seq-length",
         type=int,
-        default=None,
+        default=50,
         help=(
-            "Optional evaluation context length for the transformer. "
+            "Evaluation context length for the transformer. "
             "Use this when the checkpoint stores a larger positional embedding table "
             "than the context length actually used during training."
         ),
