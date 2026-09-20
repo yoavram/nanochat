@@ -20,7 +20,9 @@ Use Notebook tool to read/write notebooks.
 
 ## Architecture patterns
 
-**nanochat / nanochat-sft / nanochat-grpo**: Pure-functional JAX — no Flax or Equinox. `init_params(key, cfg)` returns a nested Python dict (pytree). `forward(params, x, cos, sin, mask)` is a pure function. Parameters flow explicitly into every function.
+**nanochat / nanochat-sft / nanochat-grpo / nanochat-chat**: Pure-functional JAX — no Flax or Equinox. `init_params(key, cfg)` returns a nested Python dict (pytree). `forward(params, x, cos, sin, mask)` is a pure function. Parameters flow explicitly into every function.
+
+**nanochat-chat** is inference only: it trains nothing and produces no checkpoint. It loads the pretrained, SFT and GRPO checkpoints and compares them. Its generation loop uses a fixed-size token buffer so `jax.jit` compiles once instead of once per token — do not "simplify" it back to a growing context.
 
 **Checkpoint chain:** `bpe-tokenizer.ipynb` → `bpe_tokenizer.pkl`; `nanochat.ipynb` → `nanochat_checkpoint.pkl`; `nanochat-sft.ipynb` → `nanochat_sft_checkpoint.pkl`; `nanochat-grpo.ipynb` → `nanochat_grpo_checkpoint.pkl`.
 
