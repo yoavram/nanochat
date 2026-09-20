@@ -1,8 +1,8 @@
 {
-  "model": "unigram",
-  "bpc": 4.769692789862461,
-  "n_params": null,
-  "seconds": null,
+  "model": "gru-3L",
+  "bpc": 2.036240705633434,
+  "n_params": 491471,
+  "seconds": 504.2,
   "manifest": {
     "corpus": "data/shakespear3.txt",
     "val_fraction": 0.1,
