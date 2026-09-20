@@ -1,0 +1,22 @@
+{
+  "model": "unigram",
+  "bpc": 4.769692789862461,
+  "n_params": null,
+  "manifest": {
+    "corpus": "data/shakespear3.txt",
+    "val_fraction": 0.1,
+    "context_length": 128,
+    "batch_size": 64,
+    "steps": 10000,
+    "warmup_steps": 200,
+    "peak_lr": 0.003,
+    "init_lr": 0.0001,
+    "grad_clip": 1.0,
+    "state_policy": "none",
+    "seed": 42,
+    "vocab_size": 67,
+    "n_train": 4116005,
+    "n_val": 457333,
+    "val_hash": "b73fdb99e3a24d33"
+  }
+}

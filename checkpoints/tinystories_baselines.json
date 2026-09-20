@@ -1,0 +1,8 @@
+{
+  "corpus": "data/TinyStoriesV2-GPT4-valid.txt",
+  "n_chars": 22493387,
+  "vocab_size": 91,
+  "context_length": 128,
+  "unigram_bpc": 4.446475215109406,
+  "bigram_bpc": 3.292070861849606
+}
