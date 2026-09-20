@@ -1,7 +1,8 @@
 {
   "model": "transformer",
-  "bpc": 2.138781233626763,
+  "bpc": 2.1364766661052017,
   "n_params": 493699,
+  "seconds": 67.5,
   "manifest": {
     "corpus": "data/shakespear3.txt",
     "val_fraction": 0.1,

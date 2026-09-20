@@ -2,6 +2,7 @@
   "model": "unigram",
   "bpc": 4.769692789862461,
   "n_params": null,
+  "seconds": null,
   "manifest": {
     "corpus": "data/shakespear3.txt",
     "val_fraction": 0.1,

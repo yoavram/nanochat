@@ -1,7 +1,8 @@
 {
   "model": "rnn",
-  "bpc": 2.0710049347135406,
+  "bpc": 2.08916767850586,
   "n_params": 493241,
+  "seconds": 189.1,
   "manifest": {
     "corpus": "data/shakespear3.txt",
     "val_fraction": 0.1,

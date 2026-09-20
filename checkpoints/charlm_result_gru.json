@@ -1,7 +1,8 @@
 {
   "model": "gru",
-  "bpc": 2.022709626611501,
+  "bpc": 2.0221035597498607,
   "n_params": 493747,
+  "seconds": 271.5,
   "manifest": {
     "corpus": "data/shakespear3.txt",
     "val_fraction": 0.1,
