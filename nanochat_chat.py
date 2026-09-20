@@ -150,9 +150,9 @@ def load_checkpoint(path):
 
 # Preference order: use the most-trained checkpoint that exists.
 CHECKPOINTS = [
-    'nanochat_grpo_checkpoint.pkl',
-    'nanochat_sft_checkpoint.pkl',
-    'nanochat_checkpoint.pkl',
+    'checkpoints/nanochat_grpo_checkpoint.pkl',
+    'checkpoints/nanochat_sft_checkpoint.pkl',
+    'checkpoints/nanochat_checkpoint.pkl',
 ]
 
 def find_checkpoint():

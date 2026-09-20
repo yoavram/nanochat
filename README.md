@@ -21,11 +21,16 @@ pixi run jupyter lab
 
 Key dependencies: JAX, NumPy, Matplotlib, Pandas. See [`pixi.toml`](pixi.toml) for the full list.
 
+On Linux, `pixi install` pulls `jax[cuda12]`, which needs an NVIDIA driver ≥ 525. Check yours with `nvidia-smi`. On macOS it installs CPU-only JAX.
+
+This is the canonical setup procedure; [`index.ipynb`](index.ipynb) links here rather than repeating it.
+
 ## Data
 
 Notebooks download data automatically on first run:
 
-- **TinyStories** validation split (~10 MB) — used in `bpe-tokenizer.ipynb` and `nanochat.ipynb`
+- **TinyStories** validation split, `TinyStoriesV2-GPT4-valid.txt` (22.5 MB) — used in `bpe-tokenizer.ipynb` and `nanochat.ipynb`
+- **Poker hands** (UCI, 24 MB) — used in `sets.ipynb`
 - **Ollama** with `qwen3.5:9b` — required for `minisweagent.ipynb` ([install Ollama](https://ollama.com))
 
 Generated checkpoints are written under `checkpoints/`.

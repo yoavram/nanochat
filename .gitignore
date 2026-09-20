@@ -9,12 +9,14 @@ __pycache__/
 .ipynb_checkpoints/
 *_executed.ipynb
 
-# Checkpoints and data (generated at runtime)
+# Model checkpoints and tokenised corpora (written at runtime under checkpoints/)
 *.pkl
-*.txt
-!data/abstract.txt
-!data/arxiv_example.xml
-!data/references.txt
-!data/stopwords.txt
-!data/shakespear3.txt
 *.npy
+*.npz
+
+# Datasets fetched by download_data.py
+data/TinyStories*.txt
+data/poker-hand-*.data
+
+# Cached network responses (offline fallbacks)
+data/cache/

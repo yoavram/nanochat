@@ -19,12 +19,10 @@ def download_poker(data_dir):
             print('Done.')
             
 # TinyStories
-FILES = [
-    # "TinyStories-valid.txt",        # 19.4 MB
-    "TinyStoriesV2-GPT4-valid.txt", # 22.5 MB
-    # "TinyStories-train.txt",      # 1.92 GB
-    "TinyStoriesV2-GPT4-train.txt", # 2.23 GB
-]
+# The notebooks default to the validation split; the 2.23 GB training split is an
+# explicit opt-in: `python download_data.py --train`.
+VALID_FILE = "TinyStoriesV2-GPT4-valid.txt"  # 22.5 MB
+TRAIN_FILE = "TinyStoriesV2-GPT4-train.txt"  # 2.23 GB
 
 def download_tinystories(filename: str, dest_dir: Path = Path(".")) -> None:
     BASE_URL = "https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main"
@@ -45,8 +43,13 @@ def download_tinystories(filename: str, dest_dir: Path = Path(".")) -> None:
     print(f"\r  Done → {dest}")
 
 if __name__ == "__main__":
+    import sys
+
     dest_dir = Path("data")
     dest_dir.mkdir(exist_ok=True)
     download_poker(dest_dir)
-    for f in FILES:
-        download_tinystories(f, dest_dir)
+    download_tinystories(VALID_FILE, dest_dir)
+    if "--train" in sys.argv:
+        download_tinystories(TRAIN_FILE, dest_dir)
+    else:
+        print(f"Skipping {TRAIN_FILE} (2.23 GB) — pass --train to download it.")
