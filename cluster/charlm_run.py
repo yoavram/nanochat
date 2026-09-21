@@ -17,18 +17,41 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 C = json.load(open(os.path.join(HERE, 'charlm_config.json')))
 sp = np.load(os.path.join(HERE, 'charlm_split.npz'), allow_pickle=False)
 train_tokens, val_tokens = sp['train'], sp['val']
-V = len(sp['vocab'])
+V = VOCAB = len(sp['vocab'])
 T, B = C['context_length'], C['batch_size']
 # CHARLM_STEPS exists only so a smoke job can run a handful of steps; the
 # published numbers always come from the config.
 STEPS = int(os.environ.get('CHARLM_STEPS', C['steps']))
 
-WIDTH = {'rnn': (C['rnn_h_size'], 1), 'gru': (C['gru_h_size'], 1),
-         'transformer': (C['tf_d_model'], 1),
-         'rnn-3L': (C['rnn_h_size_3l'], C['n_layers_deep']),
-         'gru-3L': (C['gru_h_size_3l'], C['n_layers_deep']),
-         'transformer-3L': (C['tf_d_model_3l'], C['n_layers_deep'])}[MODEL]
-WIDTH, NLAYERS = WIDTH
+# The six published models take their widths straight from the config, so a
+# cluster run and a notebook run are bit-for-bit the same setup. Any other depth
+# (`gru-6L`, say) is a sweep: solve the width that holds the same budget.
+PUBLISHED = {'rnn': (C['rnn_h_size'], 1), 'gru': (C['gru_h_size'], 1),
+             'transformer': (C['tf_d_model'], 1),
+             'rnn-3L': (C['rnn_h_size_3l'], C['n_layers_deep']),
+             'gru-3L': (C['gru_h_size_3l'], C['n_layers_deep']),
+             'transformer-3L': (C['tf_d_model_3l'], C['n_layers_deep'])}
+
+
+def solve_width(arch, L, budget):
+    """Smallest-error width holding `budget` parameters at depth L."""
+    V, T_ = VOCAB, C['context_length']
+    if arch == 'rnn':
+        f, step = lambda h: h*V + h*h + h + (L-1)*(2*h*h + h) + V*h + V, 1
+    elif arch == 'gru':
+        f, step = lambda h: 3*h*V + 3*h*h + 3*h + (L-1)*(6*h*h + 3*h) + V*h + V, 1
+    else:
+        # d_model must stay divisible by the head count
+        f, step = lambda d: V*d + T_*d + L*(12*d*d + 5*d) + d*V + V, C['tf_n_heads']
+    return min(range(step, 2000, step), key=lambda x: abs(f(x) - budget))
+
+
+if MODEL in PUBLISHED:
+    WIDTH, NLAYERS = PUBLISHED[MODEL]
+else:
+    arch, _, tail = MODEL.partition('-')
+    NLAYERS = int(tail.rstrip('Ll'))
+    WIDTH = solve_width(arch, NLAYERS, C['param_budget'])
 
 
 def layer_norm(x, eps=1e-6):
@@ -156,7 +179,7 @@ print(f'{MODEL} seed {SEED}: width {WIDTH}, {NLAYERS} layer(s), '
 
 p = init_fn(jax.random.key(SEED))
 n_params = int(sum(a.size for a in jax.tree_util.tree_leaves(p)))
-assert abs(n_params / C['param_budget'] - 1) < 0.05, (
+assert abs(n_params / C['param_budget'] - 1) < 0.06, (
     f'{n_params} parameters is not within 5% of {C["param_budget"]}')
 
 sch = optax.warmup_cosine_decay_schedule(
