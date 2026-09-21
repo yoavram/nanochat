@@ -80,6 +80,14 @@ Repair by adding `"execution_count": null,` and `"outputs": [],` to the code cel
 
 **3. `NotebookEdit` clears a cell's outputs when it rewrites the source**, and any `sed` on a notebook invalidates the tool's read state (forcing a re-read). When a notebook is going to be re-run anyway, clear all outputs first (`jupyter nbconvert --ClearOutputPreprocessor.enabled=True --inplace`) — re-reads then cost a fraction as much, and the notebook is not left half-stripped.
 
+**4. An executed notebook with a plot can become too large to edit at all.** `NotebookEdit` requires a `Read` in the same session, and `Read` refuses a file over 25k tokens — while `Edit` refuses `.ipynb` outright, so there is no fallback. The three character notebooks are ~13k tokens of source plus 44 KB of base64 PNG (~15k tokens) for a single loss curve, which puts them at ~28.7k once executed: editable before a run, locked after one. Measured 2026-09-21 (runs.md W6), where a caveat could not be added to `text-transformer.ipynb` after its run.
+
+Consequences, in order of usefulness:
+
+- **Land every prose and code edit before executing.** Execution is the last step, not an intermediate one.
+- Plot `dpi` is the only lever that matters — downsampling a 30k-point curve does not shrink the PNG (43 KB at every 25th point vs 42 KB at every point), but `dpi=72` takes it to 27 KB and the notebook to ~22k tokens, under the limit.
+- To edit an already-executed notebook: `jupyter nbconvert --ClearOutputPreprocessor.enabled=True --inplace`, edit, re-execute. Budget the re-execution — for these notebooks that is 18 min (transformer) to 78 min (GRU) on an A4000.
+
 **After any structural edit, validate before trusting it:** `json.load` the file, check the cell inventory, and re-read the region you changed. "The tool returned success" is not evidence the notebook is intact.
 
 ## Architecture patterns
