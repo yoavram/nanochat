@@ -18,7 +18,10 @@ C = json.load(open(os.path.join(HERE, 'charlm_config.json')))
 sp = np.load(os.path.join(HERE, 'charlm_split.npz'), allow_pickle=False)
 train_tokens, val_tokens = sp['train'], sp['val']
 V = VOCAB = len(sp['vocab'])
-T, B = C['context_length'], C['batch_size']
+B = C['batch_size']
+# CHARLM_CONTEXT sweeps how much history a model may condition on. The published
+# runs use the config value; a different context is a sweep, not a republication.
+T = int(os.environ.get('CHARLM_CONTEXT', C['context_length']))
 # CHARLM_STEPS exists only so a smoke job can run a handful of steps; the
 # published numbers always come from the config.
 STEPS = int(os.environ.get('CHARLM_STEPS', C['steps']))
@@ -35,7 +38,7 @@ PUBLISHED = {'rnn': (C['rnn_h_size'], 1), 'gru': (C['gru_h_size'], 1),
 
 def solve_width(arch, L, budget):
     """Smallest-error width holding `budget` parameters at depth L."""
-    V, T_ = VOCAB, C['context_length']
+    V, T_ = VOCAB, T
     if arch == 'rnn':
         f, step = lambda h: h*V + h*h + h + (L-1)*(2*h*h + h) + V*h + V, 1
     elif arch == 'gru':
@@ -46,7 +49,7 @@ def solve_width(arch, L, budget):
     return min(range(step, 2000, step), key=lambda x: abs(f(x) - budget))
 
 
-if MODEL in PUBLISHED:
+if MODEL in PUBLISHED and T == C['context_length']:
     WIDTH, NLAYERS = PUBLISHED[MODEL]
 else:
     arch, _, tail = MODEL.partition('-')

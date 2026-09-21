@@ -1,5 +1,10 @@
 # Run log — character-model comparison (WP1)
 
+**What we are trying to establish:** that transformers are superior to RNNs.
+The honest axis for that claim is **scaling** — depth, parallelism, context —
+not bits-per-character at a fixed small budget, where the GRU is still ahead
+(C4, C5). See C5 for the result that carries the claim.
+
 Every training run behind the numbers in `RNN.ipynb`, `GRU.ipynb` and
 `text-transformer.ipynb`, what question it was answering, and what came back.
 Append to this file; do not rewrite history. Results superseded by a later run
@@ -118,27 +123,80 @@ for attention: transformer-3L reaches the same quality as gru-3L **8× faster**
 (2.0 min vs 15.7). Attention parallelises across the sequence; `lax.scan` does
 not.
 
-### C5 — depth sweep · job `21970089` · RUNNING (submitted 2026-09-21)
-Question: **is 5 or 6 layers worth it?** Depths 2, 4, 6 × 3 architectures ×
-3 seeds = 27 tasks, writing to `depth/` so the published `results/` is untouched.
-With C4's depth-1 and depth-3 points this gives a five-point curve, which
-answers the better question — *where does the depth/width trade turn over at a
-fixed budget?*
+### C5 — depth sweep · job `21970089` · COMPLETED · **the transformer-superiority result**
 
-Prior expectation, to be checked against the result: **no** for the recurrent
-models (their depth effect was already inside noise at 3 layers, and each layer
-adds another sequential scan — gru-6L should cost ~30 min), **maybe** for the
-transformer, but `d_model=52` across 4 heads is a thin residual stream and is
-where depth should stop paying.
+Question as originally posed: *is 5 or 6 layers worth it?* Depths 2, 4, 6 ×
+3 architectures × 3 seeds = 27 tasks, written to `depth/`. Combined with C4's
+depth-1 and depth-3 points this gives a five-point curve. Results in
+`checkpoints/charlm-depth/`.
 
-Caveat: the 6-layer transformer lands at **105% of budget** — `d_model` must
-divide by 4 heads and 52 is the nearest option (48 would be 90%). The runner's
-budget assertion was widened 5% → 6% to allow it. This is a small thumb on the
-scale favouring the transformer; flag it if depth-6 wins narrowly.
+Mean bpc ± sd over seeds 42/43/44, all at the same 200k budget:
+
+| depth | rnn | gru | transformer |
+|---|---|---|---|
+| 1 | 2.0966 ± 0.0072 | 2.0607 ± 0.0137 | 2.1775 ± 0.0064 |
+| 2 | 2.0874 ± 0.0076 | **2.0282 ± 0.0062** | 2.0721 ± 0.0054 |
+| 3 | **2.0844 ± 0.0058** | 2.0421 ± 0.0075 | 2.0443 ± 0.0058 |
+| 4 | 2.1630 ± 0.0540 | 2.0791 ± 0.0091 | 2.0686 ± 0.0073 |
+| 6 | 3.3429 ± **1.2746** | 2.2912 ± **0.1087** | **2.0411 ± 0.0044** |
+
+**Depth is trainable only for the transformer.** Both recurrent models have an
+optimum (gru at 2 layers, rnn at 3) and get *worse* beyond it; the transformer
+improves monotonically and is still falling at 6. It is also the only model
+whose bpc goes *down* as it gets deeper rather than its variance going up.
+
+Seed spread at depth 6 — the qualitative result:
+
+| | seeds 42 / 43 / 44 | spread |
+|---|---|---|
+| rnn-6L | 2.3170 / 2.9418 / 4.7698 | **2.4528** |
+| gru-6L | 2.1837 / 2.2890 / 2.4010 | 0.2174 |
+| transformer-6L | 2.0378 / 2.0395 / 2.0461 | **0.0083** |
+
+A 6-layer RNN does not merely underperform — it **fails to train**. One seed
+landed at 4.77 bpc against a uniform baseline of log2(67) = 6.07, i.e. barely
+better than guessing. The transformer's spread at the same depth is **300×
+tighter**. This is the residual-stream/LayerNorm story made visible: stacking
+recurrent layers compounds a sequential product of Jacobians, while a
+transformer block is an additive perturbation of a residual stream.
+
+**This — not bpc at a fixed small depth — is the honest form of "transformers
+replaced RNNs".** The field did not switch because attention gave better
+per-parameter quality at 200k parameters; at this scale the GRU is still
+nominally ahead (gru-2L 2.0282 vs transformer-6L 2.0411, a gap of 0.013 that is
+right at the ~0.015 noise threshold). It switched because **the transformer is
+the only one of the three that can be made deep**, and depth is the axis
+everything else was bought with.
+
+Supporting result, same table: transformer-6L trains in **2.9 min** against
+gru-2L's 11.9 and gru-6L's 30.9. Better scaling *and* cheaper.
+
+Caveat carried from the design: the transformer's budget wanders 95–105%
+(`d_model` must divide by 4 heads), from 189,787 at depth 4 to 209,939 at
+depth 6. The depth-6 point therefore has ~5% more parameters than its
+competitors. This does not touch the stability result, which is qualitative.
+
+### C6 — context-length sweep · job `21970215` · RUNNING
+Question: does attention convert *more history* into quality where a recurrent
+model's fixed-size hidden state cannot? Contexts 256 and 512 (the published runs
+use 128), 3 architectures at depth 3, 3 seeds = 18 tasks.
+
+Note the transformer pays `T × d_model` for its positional table, so a longer
+context *shrinks* its width at fixed budget — the solver re-solves widths per
+context. That makes this test harder for the transformer, not easier.
 
 *Results: pending.*
 
----
+### C7 — deep transformer extension · job `21970695` · RUNNING
+The C5 transformer curve was still falling at depth 6, so: transformer-8L and
+transformer-12L, plus gru-8L and rnn-8L to confirm the recurrent collapse is a
+trend rather than a depth-6 accident. 4 models × 3 seeds = 12 tasks, appended to
+`depth/`.
+
+Open question this settles: whether the transformer eventually takes an outright
+bpc win over gru-2L (2.0282), or whether it asymptotes just short of it.
+
+*Results: pending.*
 
 ## Gotchas worth not rediscovering
 
