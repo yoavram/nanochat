@@ -185,7 +185,24 @@ Note the transformer pays `T × d_model` for its positional table, so a longer
 context *shrinks* its width at fixed budget — the solver re-solves widths per
 context. That makes this test harder for the transformer, not easier.
 
-*Results: pending.*
+Partial result (8 of 18 tasks), at context 256 against the 128 baseline:
+
+| | 128 | 256 | change |
+|---|---|---|---|
+| rnn-3L | 2.0844 | 2.0684 | **better** |
+| transformer-3L | 2.0443 | 2.0602 | **worse** |
+
+The hypothesis was that attention would gain most from a longer window. So far the
+opposite: the transformer pays `context_length x d_model` for its positional table,
+so at a fixed budget a longer context shrinks its width (194,071 params at ctx 256,
+down from 206,635). The recurrent models' widths do not depend on context, so they
+get the longer window for free.
+
+This is recorded because it is a *negative* result that the notebook now states
+honestly in exercise 4 ("be prepared for the transformer to get worse") rather than
+quietly dropping.
+
+*Remaining tasks pending.*
 
 ### C7 — deep transformer extension · job `21970695` · RUNNING
 The C5 transformer curve was still falling at depth 6, so: transformer-8L and
@@ -196,7 +213,7 @@ trend rather than a depth-6 accident. 4 models × 3 seeds = 12 tasks, appended t
 Open question this settles: whether the transformer eventually takes an outright
 bpc win over gru-2L (2.0282), or whether it asymptotes just short of it.
 
-*Results: pending.*
+*Results: pending — queued behind C6.*
 
 ## Gotchas worth not rediscovering
 
@@ -212,3 +229,33 @@ bpc win over gru-2L (2.0282), or whether it asymptotes just short of it.
   server-side wait loops rather than polling from here.
 - Quoting nested Python through `ssh` is a losing game — run checks locally or
   ship a file.
+
+---
+
+## Notebook rewrite (2026-09-21)
+
+`text-transformer.ipynb` rewritten against C4 + C5. The conclusion is no longer
+"transformers are better"; it is the two-part scaling claim:
+
+1. **Only the transformer converts depth into quality** (C5 depth table, plus the
+   depth-6 seed spreads: rnn 2.45, gru 0.22, transformer 0.008).
+2. **Depth is cheap for it and expensive for recurrence** (6 blocks 2.9 min vs
+   6 GRU layers 30.9 min) — which is [Vaswani et al. 2017](https://arxiv.org/abs/1706.03762)'s
+   own argument: "more parallelizable and requiring significantly less time to train".
+
+The section states plainly that the GRU wins on bits-per-character at this scale
+(gru-2L 2.028 vs transformer-6L 2.041, a gap inside the noise band) and that the
+argument does not need it to lose.
+
+Cells changed: `text-transformer` cell-40 (stacking table: 500k widths -> 200k),
+cell-45 (seed band), cell-47 (the conclusion), cell-48 (exercises 1-7);
+`RNN` cell-49 table + exercise 4; `GRU` cell-38 table + exercises 4 and 5.
+`checkpoints/charlm_result_*.json` regenerated from C4 with a `source` field
+naming the cluster job, so the in-notebook table matches the prose.
+
+**Recorded caveat, now exercise 3:** our recurrent stacks have no residual
+connections between layers while the transformer does, so the depth-6 collapse
+conflates "attention vs recurrence" with "residual stream vs direct composition".
+A controlled ablation was considered and **deliberately not run** — the point being
+taught is the cost argument, which residuals do not touch. Exercise 3 hands the
+ablation to the student.
