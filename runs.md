@@ -235,13 +235,26 @@ bpc win over gru-2L (2.0282), or whether it asymptotes just short of it.
 ## Notebook rewrite (2026-09-21)
 
 `text-transformer.ipynb` rewritten against C4 + C5. The conclusion is no longer
-"transformers are better"; it is the two-part scaling claim:
+"transformers are better". It is a cost argument, with a hedged supporting result.
+**The ordering matters and was corrected after review:**
 
-1. **Only the transformer converts depth into quality** (C5 depth table, plus the
-   depth-6 seed spreads: rnn 2.45, gru 0.22, transformer 0.008).
-2. **Depth is cheap for it and expensive for recurrence** (6 blocks 2.9 min vs
-   6 GRU layers 30.9 min) — which is [Vaswani et al. 2017](https://arxiv.org/abs/1706.03762)'s
-   own argument: "more parallelizable and requiring significantly less time to train".
+1. **MAIN — recurrence is sequential, attention is not.** Vaswani et al. 2017
+   Section 4, Table 1: self-attention is `O(1)` sequential operations against
+   recurrence's `O(n)`, while being *more* arithmetic per layer (`O(n^2 d)` vs
+   `O(n d^2)`). Our wall-clock column is that table measured: 6 transformer blocks
+   2.9 min, 6 GRU layers 30.9 min. Attention is not cheaper in operations, it is
+   cheaper in *time*, on hardware that rewards parallelism.
+2. **SUPPORTING, and confounded — only the transformer converts depth into
+   quality** (C5 depth table; depth-6 seed spreads rnn 2.45, gru 0.22,
+   transformer 0.008).
+
+**Why that order.** Our recurrent stacks have no residual connections while the
+transformer does, so claim 2 partly measures residual streams rather than
+attention, and a skip-connected deep GRU would do better than ours. Claim 1 is
+untouched by that: residuals cost no parameters and no sequential steps, so a
+repaired deep GRU is still 128 sequential steps per layer. **The cost argument
+survives the confound; the quality argument does not.** The notebook says this in
+a blockquote directly under the depth table rather than burying it in caveats.
 
 The section states plainly that the GRU wins on bits-per-character at this scale
 (gru-2L 2.028 vs transformer-6L 2.041, a gap inside the noise band) and that the
@@ -253,9 +266,14 @@ cell-45 (seed band), cell-47 (the conclusion), cell-48 (exercises 1-7);
 `checkpoints/charlm_result_*.json` regenerated from C4 with a `source` field
 naming the cluster job, so the in-notebook table matches the prose.
 
-**Recorded caveat, now exercise 3:** our recurrent stacks have no residual
-connections between layers while the transformer does, so the depth-6 collapse
-conflates "attention vs recurrence" with "residual stream vs direct composition".
-A controlled ablation was considered and **deliberately not run** — the point being
-taught is the cost argument, which residuals do not touch. Exercise 3 hands the
-ablation to the student.
+**The residual ablation was considered and deliberately not run.** The point being
+taught is the cost argument, which residuals do not touch, and re-deriving a known
+result (He et al. 2015) is not what this notebook is for. It is handed to the
+student instead, twice: `text-transformer.ipynb` exercise 3, and `GRU.ipynb`
+exercise 5 — the latter with the actual `deep_feed_forward` patch, since that is
+where the code lives. Both end by pointing out that a residual GRU is still ~10x
+slower at equal depth.
+
+Also added: He et al. 2015 to the references, and a "timings are one machine"
+caveat (the A6000 ratio is robust because it follows from the dependency
+structure, but it would shrink on a CPU).
