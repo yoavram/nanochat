@@ -337,8 +337,26 @@ the machine change; minutes do not. Take cost ratios only from rows whose `from`
 column agrees. `GRU.ipynb` ran last and so has a single-source main table; the
 other two are mixed.
 
-This caveat belongs in the notebook prose and is not there: once executed, the
-notebooks carry a matplotlib PNG that pushes them past the editor's read limit,
-so `NotebookEdit` can no longer touch them without first clearing outputs.
-**Prose edits must land before execution** — the same ordering the notebook
-conventions in `CLAUDE.md` already recommend for re-reads.
+The caveat is now in the notebook prose, but getting it there took a second pass
+and is worth recording. `text-transformer.ipynb` had grown to **25.5k tokens of
+source with every output stripped** — past the 25k read limit on its prose
+alone, with the executed PNG adding a further 15k on top. `NotebookEdit` needs a
+read it could no longer get and `Edit` refuses `.ipynb`, so there was no tool
+path: the edit went through the `nbformat` API instead, validated against the
+cell inventory and a re-parse of every code cell, then the notebook was
+re-executed (18 min, zero cell errors).
+
+The plot cell now renders at `dpi=72`, which cut the inline PNG from 44 KB to
+28 KB and the file from 129 KB to 113 KB — and did **not** help the read limit:
+28,756 tokens before, 29,043 after. Bytes and tokens are not proportional across
+base64, and the notebook was over the limit on its stripped prose alone, so
+shrinking the figure was never going to be enough. It stays set because a
+smaller file is better in git, not because it bought headroom.
+
+`text-transformer.ipynb` therefore remains uneditable by `NotebookEdit`.
+Factoring the triplicated `results_table`/`depth_table` machinery (~120 lines,
+plumbing rather than pedagogy) into a module would bring the stripped source
+from 25.5k to roughly 24k tokens and make the clear → edit → re-execute route
+work again. Not done here — it touches all three notebooks and deserves its own
+pass. **The durable rule is that prose edits land before execution**, which
+costs nothing; this one cost an API-level edit and a second run.

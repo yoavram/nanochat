@@ -80,13 +80,16 @@ Repair by adding `"execution_count": null,` and `"outputs": [],` to the code cel
 
 **3. `NotebookEdit` clears a cell's outputs when it rewrites the source**, and any `sed` on a notebook invalidates the tool's read state (forcing a re-read). When a notebook is going to be re-run anyway, clear all outputs first (`jupyter nbconvert --ClearOutputPreprocessor.enabled=True --inplace`) — re-reads then cost a fraction as much, and the notebook is not left half-stripped.
 
-**4. An executed notebook with a plot can become too large to edit at all.** `NotebookEdit` requires a `Read` in the same session, and `Read` refuses a file over 25k tokens — while `Edit` refuses `.ipynb` outright, so there is no fallback. The three character notebooks are ~13k tokens of source plus 44 KB of base64 PNG (~15k tokens) for a single loss curve, which puts them at ~28.7k once executed: editable before a run, locked after one. Measured 2026-09-21 (runs.md W6), where a caveat could not be added to `text-transformer.ipynb` after its run.
+**4. A notebook can grow too large for `NotebookEdit` to touch at all.** `NotebookEdit` requires a `Read` in the same session; `Read` refuses a file over 25k tokens, and it has no working offset/limit for `.ipynb` — it sizes the whole file first. `Edit` refuses `.ipynb` outright. So past that threshold there is **no tool path to the edit**, and the only ways back are to shrink the source or to edit through the `nbformat` API and validate hard afterwards.
+
+Measured 2026-09-21 (runs.md W6): `text-transformer.ipynb` is **25.5k tokens with every output stripped** — the prose alone is over — and ~28.7k once executed, the extra 15k being 44 KB of base64 PNG for one loss curve. Assume roughly 3 characters per token: a 75 KB `.ipynb` is already at the limit.
 
 Consequences, in order of usefulness:
 
-- **Land every prose and code edit before executing.** Execution is the last step, not an intermediate one.
-- Plot `dpi` is the only lever that matters — downsampling a 30k-point curve does not shrink the PNG (43 KB at every 25th point vs 42 KB at every point), but `dpi=72` takes it to 27 KB and the notebook to ~22k tokens, under the limit.
-- To edit an already-executed notebook: `jupyter nbconvert --ClearOutputPreprocessor.enabled=True --inplace`, edit, re-execute. Budget the re-execution — for these notebooks that is 18 min (transformer) to 78 min (GRU) on an A4000.
+- **Land every prose and code edit before executing.** Execution is the last step, not an intermediate one — clearing outputs afterwards does *not* necessarily buy back enough room, as it did not here.
+- **Source size is the thing to watch, not outputs.** Trimming the figure does not rescue a notebook whose prose is already over: `dpi=72` cut the PNG from 44 KB to 28 KB and the file from 129 KB to 113 KB, and the token count did **not** drop (28,756 → 29,043, the rise being the added caveat). Bytes and tokens are not proportional across base64. The dpi is still set, for the git history's sake, but do not count it as headroom.
+- If a notebook has to come back under the limit, cut source: the `results_table`/`depth_table` machinery is ~120 lines triplicated across the three notebooks and is plumbing rather than pedagogy — factoring it into a module would take `text-transformer.ipynb`'s stripped source from 25.5k to roughly 24k, which makes the clear → edit → re-execute route work again. The helpers the notebooks deliberately duplicate (`sample_batch`, `evaluate_bpc`, `repeat_seeds`) are a different matter and should stay inline.
+- To edit an already-executed notebook that is otherwise under the limit: `jupyter nbconvert --ClearOutputPreprocessor.enabled=True --inplace`, edit, re-execute. Budget the re-execution — 18 min (transformer) to 78 min (GRU) on an A4000.
 
 **After any structural edit, validate before trusting it:** `json.load` the file, check the cell inventory, and re-read the region you changed. "The tool returned success" is not evidence the notebook is intact.
 
