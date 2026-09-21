@@ -12,6 +12,49 @@ Use Notebook tool to read/write notebooks.
 
 `pixi install` then `pixi run jupyter lab`. Platform: `osx-arm64`, Python 3.14. Key deps: JAX, NumPy, Matplotlib, Pandas.
 
+On the workstation, run everything through `~/.pixi/bin/pixi run …`, which resolves to
+`.pixi/envs/default` inside the repo (jax 0.9.2, GPU backend, 2× RTX A4000). The system
+`python3` has no numpy, so nothing falls through to it silently. All notebooks declare the
+`python3` kernelspec, which under `pixi run jupyter lab` is that local env.
+`TF_CPP_MIN_LOG_LEVEL=3` silences XLA autotuner chatter that otherwise pollutes committed
+outputs. The two GPUs are shared with other users — check `nvidia-smi` before a long run and
+pin with `CUDA_VISIBLE_DEVICES` if someone else is on one.
+
+## TAU Slurm cluster
+
+For work too big for the workstation, jobs go to the TAU cluster. The runbook is a skill:
+
+- **Plugin:** `cluster-agent@yoavram-lab-tools`, installed at user scope from
+  `git@github.com:yoavram-lab/cluster-agent-skill.git`. Invoke it with the `cluster-agent`
+  skill before doing cluster work; it covers partition discovery, submission, queue and
+  accounting checks. Refresh with `claude plugin marketplace update yoavram-lab-tools`.
+  A plugin installed mid-session is not in that session's skill registry — restart, or read
+  its `SKILL.md` directly.
+- **HTTPS clone of that repo fails** (no credential helper); add the marketplace by its
+  **SSH** URL.
+
+Facts verified on this machine (2026-09-21) — the skill says never to guess these, so
+re-run `check_my_partitions` rather than trusting this list if anything looks off:
+
+| | |
+|---|---|
+| SSH target | `yoavram@slurmlogin.tau.ac.il` — **the cluster user is `yoavram`**, not the workstation's `jupyter-yoavram`; using the local name gives `Permission denied` |
+| Login host | `powerslurm-login.tau.ac.il`, key-based auth via `id_ed25519` |
+| Account | `yoavhnram-users_v2` (exact string; do not "fix" it) |
+| GPU pool | `gpu-dudu-tzach-yoav-pool` (A6000×8, `compute-0-420`), QOS `owner` — first choice; `gpu-general-pool`/`public` is the mixed-hardware fallback; `gpu-yoavram-pool` (A100×8) only if A100 is genuinely needed |
+| CPU test pool | `power-general-shared-pool`, QOS `public` |
+| pixi | `/scratch300/yoavram/.pixi/bin/pixi`; `~/nanochat/cluster-env.sh` exports `PIXI_HOME` and `PIXI_CACHE_DIR` to `/scratch300` — source it in job scripts |
+
+**Each SSH round-trip costs ~30–60 s** because the home directory is networked
+(`/a/home/cc/lifesci/yoavram`). Batch several commands into one `ssh` call rather than
+chatting, and use a generous `timeout`; a 30 s cap will cut off a perfectly good login.
+
+The cluster checkout at `~/nanochat` is **stale** — it predates the character-notebook work
+(no `RNN.ipynb`, `GRU.ipynb` or `text-transformer.ipynb`) and `data/` is empty. Anything
+sent there needs its corpus and inputs copied over first. Prefer submitting a standalone
+runner script over `nbconvert --execute` on a notebook: array jobs parallelise across the
+pool, whereas a notebook runs its models serially.
+
 ## Notebook conventions
 
 - Edit `.ipynb` files with the `Read` and `NotebookEdit` tools. Do not use Bash Python to parse notebooks.
