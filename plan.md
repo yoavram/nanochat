@@ -595,9 +595,73 @@ it did not.
 
 ---
 
-### WP4 — `sets.ipynb`  ⬜ not started
-Does 2.1–2.10. Unblocked. **No retraining** — Yoav's decision 2026-09-20: keep the training
-exactly as it is and change the metric.
+### WP4 — `sets.ipynb`  ✅ done 2026-09-21 (branch `sets-revision`, `c827495` + `109d6e4`)
+Does 2.1–2.10. **No retraining** — Yoav's decision 2026-09-20: keep the training exactly as it
+is and change the metric. Honoured: no model, budget or hyperparameter changed. The notebook
+*was* re-executed, because no sets checkpoints exist and the ground rules forbid hand-editing
+outputs — re-execution is how real outputs get made, not a retraining decision reversed.
+
+**Committed results** (CPU, jax 0.9.2; full numbers live in the notebook's outputs and the
+cross-run picture in `runs.md` S1 — not duplicated here):
+
+| | Params | Test | Val macro |
+|---|---|---|---|
+| Flattened FFN | 20,150 | 99.0% | 68.2% |
+| Deep Sets | 20,152 | 77.4% | 27.3% |
+| Set Transformer | 20,010 | 99.8% | **77.8% = exactly 7/9** |
+| Majority baseline | — | 50.1% | 11.1% |
+
+**Yoav's steer, 2026-09-21: this is pedagogical material, not research.** The Discussion had
+been drifting toward noise bands and reproducibility — the register of `runs.md` — and was
+rebuilt around the mechanism instead: *how does each architecture compute "do cards i and j
+share a rank?"* FFN learns it C(5,2)=10 times, once per position pair; Deep Sets never places
+two cards side by side, so it must smuggle the coincidence through a sum; attention computes it
+directly with shared weights, so it learns it once. Statistical caveats kept, but cut to a
+sentence each. **Apply this steer to WP5–WP10 as well.**
+
+- [x] **2.2 the central change.** Per-class recall, macro average (= balanced accuracy),
+      majority baseline row, and prose on micro vs macro. Royal flush has no validation
+      examples so the macro average is over nine classes — which is why the majority baseline
+      is 1/9, not 1/10
+- [x] **2.3 per-hand permutations.** **Result was not what the review expected**: the stronger
+      test *agrees* with the weak one (1.00% vs 1.10%), so it is reported as agreement, not
+      discovery. A planned exercise built on the opposite expectation was replaced — see below
+- [x] **2.1 step-budget asymmetry stated**, not equalised; exercise 1 asks students to equalise
+- [x] 2.5 Zaheer hedged — trimmed under the pedagogical steer to the one caveat that pays off:
+      the theorem says a solution *exists*, not that training finds it
+- [x] **2.6 — the review describes this backwards.** It says cell 25 "has `\\` line breaks that
+      render wrong"; the defect is that three equations shared one `$$…$$` with **no** `\\`.
+      Fixed with `aligned`
+- [x] 2.7 train/val/test all on full splits (train had been a 10,000-row subset)
+- [x] **2.8 reversed `split` operands — not cosmetic.** It swapped which key continued the
+      chain, so fixing it shifted the key stream for Deep Sets and the Set Transformer. Every
+      number in the notebook moved; this is why prose numbers had to come from the notebook's
+      own execution and not from the side runner
+- [x] 2.9 six exercises
+- [x] ~~2.4 train on 5 / eval on 7~~ dropped 2026-09-20 — **but the "variable-size input ✓"
+      claim it left asserted-and-unshown is now recovered honestly by exercise 2**: five-card
+      data cannot demonstrate *larger* sets, but dropping a card demonstrates smaller ones —
+      the FFN raises, the other two run
+- [x] 2.10 closed 2026-09-20 (UCI URL resolves)
+- [x] Not from the review: `os.makedirs` for the download dir (cell failed on a fresh clone);
+      the permutation test no longer shadows the dataset-shuffle `perm`; `rho_*` indentation;
+      wall time captured into variables so the table can report it
+
+**Three things worth carrying forward.**
+
+1. **`sets.ipynb` crossed the 25k-token edit limit mid-package** (29,577 executed) and `Read`
+   refused it — the WP-N trap, reached *from under the limit* by adding ~3k tokens of prose
+   plus one output table. I had told Yoav this notebook was safely clear of the wall; that was
+   true when measured and false an hour later. Recovered by cutting printed training logs from
+   up to 200 lines per model to 20, evaluation still on a 100-point grid so the curves are
+   unchanged. **Watch source growth during a package, not only at its start.**
+2. **A claim was corrected before commit, not after.** A draft said the FFN "fades as hands get
+   rarer". The measured column is not monotone — 100% on straights (support 394) against 48.7%
+   on full houses (150) and 75.0% on four of a kind (20). Same class of error as C5 and C7.
+3. **The Deep Sets non-reproducibility has a better explanation than the plan's.** The plan
+   blamed CPU-vs-GPU; two further CPU runs (85.1%, 77.6%) refute that. Yoav's reading — one
+   learning rate shared by three models, and Deep Sets alone sums five vectors before `rho`
+   sees them — fits the plateau-escape times far better. Untested; it is exercise 6.
 
 Committed results (CPU), for reference:
 
@@ -1079,6 +1143,7 @@ does not hold.
 
 | Date | WP | What happened |
 |------|----|---------------|
+| 2026-09-21 | WP4 | **`sets.ipynb` delivered on branch `sets-revision`** (`c827495` WIP, `109d6e4` executed). All of 2.1–2.10 closed. Set Transformer 77.8% macro = **exactly 7/9**: 100% recall on all seven classes it reaches, 0% on the two suit-defined ones, the same figure in three independent runs across two devices. **Yoav's steer mid-package — this is pedagogical material, not research** — rebuilt the Discussion around the mechanism (*how does each architecture compute "do cards i and j share a rank?"*) and cut the statistical caveats to a sentence each; **this steer applies to WP5–WP10 too**. Three findings the review did not anticipate: 2.6 is described backwards in the review (the defect is a **missing** `\\`, not a broken one); 2.3's stronger per-hand permutation test **agrees** with the weak one (1.00% vs 1.10%) rather than exposing more, so a planned exercise resting on the opposite expectation was replaced with an attention ablation; and 2.8's reversed `split` is **not cosmetic** — it shifted the key stream for two models, so every number moved and prose numbers had to come from the notebook's own run. **The plan's CPU-vs-GPU explanation for Deep Sets not reproducing is wrong** — two further CPU runs gave 85.1% and 77.6% against a committed 92.1%; Yoav's mistuned-LR reading fits far better and is now exercise 6. **`sets.ipynb` hit the WP-N edit wall mid-package** at 29,577 tokens, having been comfortably under it when I checked an hour earlier — recovered by cutting printed training logs 200 → 20 lines per model. Corrected before committing: a draft claimed the FFN "fades as hands get rarer", which its own non-monotone column refutes (C5/C7 again). |
 | 2026-09-21 | — | **`plan.md` reconciled against `git log` — it had drifted eleven commits.** The session log stopped at `57b55df` while `runs.md` stayed current, so the plan still called WP2 and WP3 "not started" after both had been delivered, and still carried the single-seed decision that W4 overturned. Closed WP2 (Yoav, four prose rows struck through rather than finished — BPTT unnamed, ResearchGate links surviving, nanoGPT uncited, GRU LN un-ablated and kept as an open item) and WP3 (done and overtaken: two of its specification rows were *reversed by measurement*, and its conclusion is not the one the review expected — the GRU wins on bpc). Added **WP-N** for the notebook-size problem that has no tool path around it. The C6/C7 prose debt is delegated to its own issue; the LR-sweep handoff is retired and `handoff-lr-sweep.md` deleted. `plan.md` is now tracked in git — it had been untracked all along, which is why none of this drift was visible. **Rule added to the ground rules: reconcile against `git log` at the start of a session, not only at the end.** |
 | 2026-09-21 | WP3 | **C6 and C7 harvested; both falsify something** (`4abebda`). C7 extends the depth curve to 8 and 12 blocks and kills "still descending at 6": the transformer bottoms out at depth 6 (2.041), then 2.050 at 8 and 2.056 at 12. Only the 6 → 12 step clears the 0.015 band, so the rise is gentle — but the curve is not descending at the end, and the transformer never takes an outright win over gru-2L's 2.028. **Same class of error as the one corrected under C5: a curve read past its last measured point.** What the extension does establish is stronger than what it cost — rnn-8L is 4.462 (worse than the *bigram* baseline, approaching the uniform ceiling of 6.07) and gru-8L is 3.369 with seeds spread over 2.2 bpc, against which the transformer's 2.041 → 2.056 is a flat line. "Degrades gracefully with depth where recurrence collapses" is the honest claim. C6 refutes its own hypothesis monotonically: the transformer is the **only** model that gets worse with more history (+0.016 at context 256, +0.046 at 512) because the positional table forces `d_model` down from 72 to 64; both recurrent models are best at 256 and get the longer window free. Exercise 4 already warned students to expect this and can now cite it. `depth_table()` picked up all the new points with no code change. **⚠ The notebook prose is not updated for any of this** — blocked on WP-N. |
 | 2026-09-21 | WP2 | **Wall-clock caveat added, and yesterday's size diagnosis corrected** (`a97e6d2`). The committed table mixes sources by construction — result files are C4's (A6000), the transformer rows this machine's (A4000) — so rnn depth 1 reads 4.0 min beside a transformer row at 2.9 min and the minutes column cannot be read down. Bits per character survives a machine change; minutes do not. **The edit had to go through the `nbformat` API**: the notebook is 25.5k tokens with every output stripped, past the read limit on its prose alone, so `NotebookEdit` had no read to work from and `Edit` refuses `.ipynb`. Validated against the cell inventory and a re-parse of every code cell, then re-executed clean. **Correcting yesterday's claim that the inline PNG was the cause**: `dpi=72` cut the image 44 → 28 KB and the file 129 → 113 KB while tokens went 28,756 → **29,043**. Bytes and tokens are not proportional across base64. → **WP-N created**. |

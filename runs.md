@@ -410,3 +410,87 @@ from 25.5k to roughly 24k tokens and make the clear → edit → re-execute rout
 work again. Not done here — it touches all three notebooks and deserves its own
 pass. **The durable rule is that prose edits land before execution**, which
 costs nothing; this one cost an API-level edit and a second run.
+
+---
+
+## S1 — `sets.ipynb` under the metric change (WP4) · 2026-09-21 · workstation CPU
+
+Not part of the character-model experiment; logged here because the *cross-run*
+picture below exists in no single notebook. The per-class numbers themselves are
+committed as outputs inside `sets.ipynb` and are not duplicated here.
+
+Setup unchanged from the committed notebook — Yoav's "no retraining" decision:
+~20k parameters each, batch 256, `optax.adamw(1e-3, wd=1e-4)`, FFN and Set
+Transformer 50,000 steps, Deep Sets 200,000. Only the metric and the prose
+changed. Run on CPU (`JAX_PLATFORMS=cpu`, jax 0.9.2) because the committed
+outputs were CPU and the open question was a CPU-vs-GPU discrepancy.
+
+### Deep Sets does not reproduce, and the device was not the reason
+
+| run | device | threads | Deep Sets plain acc | macro |
+|---|---|---|---|---|
+| committed (original notebook) | CPU | ? | **92.1%** | not measured |
+| balanced-accuracy probe, 2026-09-20 | GPU | — | 84.4% | 35.8% |
+| WP4 side runner | CPU | 16 | 85.1% | 39.9% |
+| **WP4 committed re-execution** | CPU | 48 | **77.6%** | **27.3%** |
+
+The plan had attributed the 92.1 → 84.4 drop to CPU-vs-GPU float
+non-determinism. That explanation does not survive: two further **CPU** runs
+landed at 85.1% and 77.6%. Deep Sets sits on a long plateau and the run-to-run
+variation is in *when it escapes*, not in the device.
+
+Yoav's reading, which the evidence supports better: this looks like a **mistuned
+learning rate**, not an unstable architecture. All three models share `lr=1e-3`
+but escape the plateau at very different times — the Set Transformer within
+~2,500 steps, the FFN around 7,500, Deep Sets not until ~30,000 and still
+descending at 200,000. Deep Sets is the one that sums five per-card vectors
+before `rho` sees them, so `rho`'s input scale differs from the other models'
+while the init scale is a flat 0.02 everywhere. Untested — it is exercise 6.
+
+**Consequence for the notebook:** Deep Sets' row is presented as one draw with
+an explicit caveat, per Yoav's decision, not as a verdict on the architecture.
+
+### The Set Transformer is stable, and lands on exactly 7/9
+
+| run | macro |
+|---|---|
+| balanced-accuracy probe (GPU) | 77.78% |
+| WP4 side runner (CPU, 16 threads) | 77.78% |
+| WP4 committed re-execution (CPU, 48 threads) | 77.8% |
+
+Three runs, two devices, identical. It scores **100% recall on all seven classes
+it reaches and 0% on the two suit-defined ones** (flush, straight flush), so its
+macro average is exactly 7/9 = 77.78%. Its entire error budget is flushes. The
+FFN by contrast moved 72.3 → 65.6 → 68.2 across the same three runs, so *it* is
+the one with a reproducibility question, not only Deep Sets.
+
+### Flush is 0% for every model, every run
+
+180 of 102,501 validation hands (0.18%). No model ever predicts it, including
+the Set Transformer, which has the mechanism to detect it trivially — comparing
+suits pairwise is the operation it already uses on ranks. Treated in the
+notebook as a lesson about the objective, not the architecture.
+
+### The stronger permutation test agrees with the weak one
+
+The committed test applied **one** shared permutation to all 1000 hands, which
+samples 1 of 120 orderings. Replacing it with an independent permutation per
+hand was expected to expose more order-dependence in the FFN. It did not:
+**1.10% shared against 1.00% per-hand**. The fix is still right — the old test
+was weak by construction — but it must be reported as "the stronger test
+agrees", not as a discovery. An exercise built on the opposite expectation was
+removed rather than left to mislead.
+
+### Gotchas
+
+- **`sets.ipynb` crossed the 25k-token edit limit mid-package**, at 29,577
+  tokens executed, and `Read` refused it — the WP-N trap, reached from under the
+  limit by adding ~3k tokens of prose and one output table. Recovered by cutting
+  printed training logs from up to 200 lines per model to 20 (evaluation still
+  on a 100-point grid, so the loss curves are unchanged). Executed size is now
+  257 KB and readable. **Watch source growth during a package, not just at the
+  start of one.**
+- A first background run was killed at ~10k steps with no OOM, no journal entry
+  and 486 GB free. No cause was ever established. `setsid` + `nohup` made it
+  moot; long runs here should be detached from the session that starts them.
+- `pixi run` needs the repo as its working directory, not the scratchpad.
