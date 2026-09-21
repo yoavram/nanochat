@@ -190,7 +190,7 @@ Caveat carried from the design: the transformer's budget wanders 95–105%
 depth 6. The depth-6 point therefore has ~5% more parameters than its
 competitors. This does not touch the stability result, which is qualitative.
 
-### C6 — context-length sweep · job `21970215` · RUNNING
+### C6 — context-length sweep · job `21970215` · COMPLETED · **attention does not convert more history into quality here**
 Question: does attention convert *more history* into quality where a recurrent
 model's fixed-size hidden state cannot? Contexts 256 and 512 (the published runs
 use 128), 3 architectures at depth 3, 3 seeds = 18 tasks.
@@ -216,18 +216,68 @@ This is recorded because it is a *negative* result that the notebook now states
 honestly in exercise 4 ("be prepared for the transformer to get worse") rather than
 quietly dropping.
 
-*Remaining tasks pending.*
+**COMPLETED, 18/18, harvested 2026-09-21.** Full result, mean ± sd over seeds
+42/43/44, in `checkpoints/charlm-ctx/{256,512}/`:
 
-### C7 — deep transformer extension · job `21970695` · RUNNING
+| | 128 | 256 | 512 |
+|---|---|---|---|
+| rnn-3L | 2.0844 ± 0.0058 | **2.0684 ± 0.0264** | 2.0781 ± 0.0187 |
+| gru-3L | 2.0421 ± 0.0075 | **2.0367 ± 0.0157** | 2.0505 ± 0.0018 |
+| transformer-3L | **2.0443 ± 0.0058** | 2.0602 ± 0.0020 | 2.0900 ± 0.0051 |
+
+**The hypothesis is refuted, and monotonically.** The transformer is the only
+model that gets *worse* with more history, and it gets worse at every step:
++0.016 at 256, +0.046 at 512. Both recurrent models are best at 256. The
+mechanism is the positional table — the solver shrinks `d_model` from 72 to 68
+to 64 (206,635 → 194,071 → 189,827 parameters) to pay for it, while the
+recurrent widths are independent of context and get the longer window free.
+
+Cost scales as predicted and does not change the ranking: at 512 the transformer
+takes 10.6 min against gru-3L's 61.8.
+
+Exercise 4 in `text-transformer.ipynb` already tells students to expect this
+("be prepared for the transformer to get *worse*"). It can now cite the numbers.
+
+### C7 — deep transformer extension · job `21970695` · COMPLETED · **falsifies "still descending at 6"**
 The C5 transformer curve was still falling at depth 6, so: transformer-8L and
 transformer-12L, plus gru-8L and rnn-8L to confirm the recurrent collapse is a
 trend rather than a depth-6 accident. 4 models × 3 seeds = 12 tasks, appended to
-`depth/`.
+`depth/`. **12/12 COMPLETED, harvested 2026-09-21.**
 
-Open question this settles: whether the transformer eventually takes an outright
-bpc win over gru-2L (2.0282), or whether it asymptotes just short of it.
+The full curve, now seven points, rendered by `depth_table()` from the committed
+files (the notebook needed no code change to pick the new points up):
 
-*Results: pending — queued behind C6.*
+| depth | rnn | gru | transformer |
+|---|---|---|---|
+| 1 | 2.097 ± 0.007 | 2.061 ± 0.014 | 2.178 ± 0.006 |
+| 2 | 2.087 ± 0.008 | **2.028 ± 0.006** | 2.072 ± 0.005 |
+| 3 | **2.084 ± 0.006** | 2.042 ± 0.008 | 2.044 ± 0.006 |
+| 4 | 2.163 ± 0.054 | 2.079 ± 0.009 | 2.069 ± 0.007 |
+| 6 | 3.343 ± 1.275 | 2.291 ± 0.109 | **2.041 ± 0.004** |
+| 8 | 4.462 ± 0.519 | 3.369 ± 1.209 | 2.050 ± 0.015 |
+| 12 | — | — | 2.056 ± 0.003 |
+
+**The transformer has an optimum too, at 6 layers.** 8 is +0.009 (inside the
+0.015 band) and 12 is +0.015 (at it), so the rise is gentle and only the 6 → 12
+step clears the threshold — but the curve is no longer descending at the end,
+and the answer to "does it eventually beat gru-2L (2.0282) outright" is **no**.
+It bottoms out 0.013 short, which is itself inside the band: at best depth the
+two are tied, exactly as C5 said.
+
+This kills the sentence "the transformer's 2.041 ... sits on a curve still
+descending" in the notebook conclusion, and the "still falling at the end" phrase
+that replaced the earlier "improves monotonically". Same class of error as the
+one corrected under C5: a curve read past its last measured point.
+
+**What survives, and is strengthened:** the two recurrent models keep falling
+apart while the transformer does not. rnn-8L is 4.462 — worse than the bigram
+baseline (3.581) and approaching the uniform ceiling of 6.07 — and gru-8L is
+3.369 with seeds spread over 2.2 bpc. Against that, the transformer moving from
+2.041 to 2.056 between depth 6 and 12 is a flat line. The honest claim is
+**"the transformer degrades gracefully with depth where recurrence collapses"**,
+which is a better statement of the architecture's advantage than "it keeps
+improving" ever was — and the cost argument is untouched: 12 transformer blocks
+cost 4.7 min against 8 GRU layers' 40.3.
 
 ## Gotchas worth not rediscovering
 
