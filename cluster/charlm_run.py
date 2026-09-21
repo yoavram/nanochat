@@ -183,7 +183,7 @@ print(f'{MODEL} seed {SEED}: width {WIDTH}, {NLAYERS} layer(s), '
 p = init_fn(jax.random.key(SEED))
 n_params = int(sum(a.size for a in jax.tree_util.tree_leaves(p)))
 assert abs(n_params / C['param_budget'] - 1) < 0.06, (
-    f'{n_params} parameters is not within 5% of {C["param_budget"]}')
+    f'{n_params} parameters is not within 6% of {C["param_budget"]}')
 
 sch = optax.warmup_cosine_decay_schedule(
     init_value=C['init_lr'], peak_value=C['peak_lr'],

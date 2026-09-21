@@ -140,10 +140,24 @@ Mean bpc ± sd over seeds 42/43/44, all at the same 200k budget:
 | 4 | 2.1630 ± 0.0540 | 2.0791 ± 0.0091 | 2.0686 ± 0.0073 |
 | 6 | 3.3429 ± **1.2746** | 2.2912 ± **0.1087** | **2.0411 ± 0.0044** |
 
-**Depth is trainable only for the transformer.** Both recurrent models have an
-optimum (gru at 2 layers, rnn at 3) and get *worse* beyond it; the transformer
-improves monotonically and is still falling at 6. It is also the only model
+**Depth is trainable only for the transformer.** Both recurrent models get
+*worse* past a point and the transformer does not. It is also the only model
 whose bpc goes *down* as it gets deeper rather than its variance going up.
+
+**Correction (2026-09-21, reading the table against its own noise band):** this
+paragraph originally read "gru at 2 layers, rnn at 3 … the transformer improves
+monotonically". Two of those three claims do not survive the 0.015 band:
+
+- the **transformer is not monotone** — depth 3 → 4 is +0.0243, *worse*, and
+  1.7× the band, so it is not dismissible. The curve falls steeply to 3, wobbles
+  at 4, and reaches its best value at 6. "Falling overall and still falling at
+  the end" is what the data supports.
+- the **rnn has no measured optimum** — 1 → 3 is 0.0122, inside the band. It is
+  flat from 1 to 3 and then collapses.
+- **gru at 2 stands**: 1 → 2 is 0.0325, 4σ, and every point past 2 is worse.
+
+Nothing downstream changes: the contrast with a collapse to 3.34 ± 1.27 is
+untouched, and the depth-6 stability result is qualitative.
 
 Seed spread at depth 6 — the qualitative result:
 
@@ -277,3 +291,54 @@ slower at equal depth.
 Also added: He et al. 2015 to the references, and a "timings are one machine"
 caveat (the A6000 ratio is robust because it follows from the dependency
 structure, but it would shrink on a CPU).
+
+---
+
+## W6 — workstation validation of C4, and the committed cell outputs · 2026-09-21
+
+All three notebooks executed end to end on the workstation (2× RTX A4000,
+`nbconvert --execute --inplace`, RNN and GRU in parallel, transformer after RNN;
+57 + 78 + 18 min). **Zero cell errors** — which is itself the result being
+checked, because the notebooks previously asserted a 3% budget bound that the
+3-block transformer (206,635 parameters, +3.32%) could not satisfy, so the
+transformer notebook could not run to completion at all. The bound is now
+`BUDGET_TOL = 0.06`, the same one `cluster/charlm_run.py` uses.
+
+A third independent execution of the experiment, on different hardware:
+
+| model | C4 (A6000) | W6 (A4000) | Δ | C4 min | W6 min |
+|---|---|---|---|---|---|
+| rnn | 2.0966 ± 0.0072 | 2.0903 ± 0.0135 | −0.0063 | 4.0 | 7.5 |
+| rnn-3L | 2.0844 ± 0.0058 | 2.0932 ± 0.0146 | +0.0088 | 11.2 | 15.0 |
+| gru | 2.0607 ± 0.0137 | 2.0647 ± 0.0030 | +0.0040 | 5.8 | 9.9 |
+| gru-3L | 2.0421 ± 0.0075 | 2.0416 ± 0.0082 | −0.0005 | 15.7 | 19.2 |
+| transformer | 2.1775 ± 0.0064 | 2.1744 ± 0.0017 | −0.0032 | 1.2 | 2.3 |
+| transformer-3L | 2.0443 ± 0.0058 | 2.0429 ± 0.0076 | −0.0014 | 2.0 | 4.0 |
+
+Every gap is inside the 0.015 band, the largest being rnn-3L at 0.0088. The
+orderings are unchanged, and so is every claim in the conclusion. The A4000 is
+1.7–1.9× slower than the A6000 across the board, so the *ratios* the cost
+argument rests on survive the hardware change — which is the empirical content
+of the "timings are one machine" caveat.
+
+**The committed `charlm_result_*.json` are still C4's**, restored with
+`git checkout` after the run: `charlm_run.py` is a second implementation and C4
+is the published sweep. What the notebooks now carry is their **cell outputs**,
+produced by this W6 run — so the tables printed in the notebooks are W6 numbers
+while the result files and the prose are C4's. They agree to within 0.009, and
+the `from` column added in this pass names the machine for every row, so the
+difference is visible rather than hidden.
+
+**Reading wall-clock across that column is invalid, and the stored output shows
+why:** in `text-transformer.ipynb`'s depth table, rnn depth 1 reads 7.5 min
+(A4000, W6) next to depth 2's 7.0 min (A6000, C5), which looks like depth 2 being
+cheaper than depth 1. Bits per character is a property of the model and survives
+the machine change; minutes do not. Take cost ratios only from rows whose `from`
+column agrees. `GRU.ipynb` ran last and so has a single-source main table; the
+other two are mixed.
+
+This caveat belongs in the notebook prose and is not there: once executed, the
+notebooks carry a matplotlib PNG that pushes them past the editor's read limit,
+so `NotebookEdit` can no longer touch them without first clearing outputs.
+**Prose edits must land before execution** — the same ordering the notebook
+conventions in `CLAUDE.md` already recommend for re-reads.
