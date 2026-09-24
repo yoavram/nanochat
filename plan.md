@@ -29,6 +29,9 @@ not only at the end of one.
 | — | Seeds | ~~**Single seed per run.**~~ **Reversed 2026-09-21: three seeds (42, 43, 44) with error bars**, for the character experiment at least. Run W4 in `runs.md` re-ran identical code and got rnn-3L 2.133 then 2.066 — GPU/XLA nondeterminism compounded over the run — so a single number could not be told apart from a real effect. The published sweep is 6 models × 3 seeds; the noise band it establishes (**seed sd ≈ 0.008, so a gap under ~0.015 bpc is noise**) is now the instrument every claim in the three notebooks is read against. The single-seed rule still stands for the nanochat work packages (WP6–WP8), where a run costs hours rather than minutes. |
 | — | Checkpoint distribution | **Students do not get the `.pkl` files.** Deferred; do not add checkpoint URLs to `download_data.py` in this pass. Every notebook must therefore be runnable from scratch, or state plainly that it needs a checkpoint the student must produce. |
 | — | Delivery date | **None set.** Size training runs for correctness, not for a deadline. |
+| — | **Register: teaching, not research** | **Yoav 2026-09-24.** These are workshop notebooks. The main line demonstrates *how a mechanism works*; statistical care stays, but compressed to a sentence, not made the climax. WP4's Discussion was rebuilt on this basis (mechanism first: *how does each architecture compute "do cards i and j share a rank?"*). **Applies to WP5–WP10.** Noise bands, reproducibility and seed variance belong in `runs.md`, not in notebook prose. |
+| — | **One story per notebook** | **Yoav 2026-09-24.** When a second, genuinely different lesson turns up inside a notebook, split it out rather than carry both. WP4 found a class-imbalance story inside a transformers notebook: the notebook keeps the *diagnosis* (it explains the transformer's own result) and the *fix* was handed to an FFN-only session in `yoavram/DataSciPy` — **issue #15**, filed with all numbers and code. Test to apply: does this lesson explain the notebook's own subject, or is it a different subject that happens to appear here? |
+| — | **Ceilings before blame** | Established in WP4, generalisable. Before attributing a model's failure to its architecture, compute what the *task* permits — WP4's suit-blind ceiling (99.82% / 7-of-9) was derived from the data in three lines with no model, and predicted the trained Set Transformer's score exactly. Cheap, and it converts an unexplained blemish into the notebook's strongest claim. Worth asking in WP6–WP8 too. |
 
 ### Environment facts verified 2026-09-20
 - 2× NVIDIA RTX A4000, 16 GB each — but **nothing in this repo is multi-GPU** (no `pmap`,
@@ -150,6 +153,12 @@ two things checked hardest.
 - **Never hand-edit an output cell.** Either re-run and commit real outputs, or strip the
   stale outputs and say so.
 - Do not run the cells listed under "Do not run" in the review before the corresponding fix.
+- **Source size must be watched *during* a package, not only at its start.** WP4 measured
+  `sets.ipynb` comfortably under the limit, then crossed it an hour later by adding ~3k tokens
+  of prose and one output table (29,577 executed, `Read` refused). Recovered by cutting printed
+  training logs from up to 200 lines per model to 20 — evaluation still on a 100-point grid, so
+  the loss curves were unchanged. Verbose training logs are the cheapest thing to cut and are
+  pedagogically worthless.
 - **A notebook over ~25k tokens of source cannot be edited by any tool.** `Read` refuses it,
   `NotebookEdit` needs that `Read`, `Edit` refuses `.ipynb`. Land prose and code edits
   *before* executing, and watch source size rather than output size — see WP-N and
@@ -1098,6 +1107,21 @@ overwrites them and the diff looks like a legitimate result update.
 
 ## Open items needing Yoav
 
+**Raised 2026-09-24, both trivial but both unresolved:**
+
+- [ ] **Commit attribution is contradictory.** `CLAUDE.md` says "Don't add co-author note to git
+      commit messages" and the saved preference agrees, but this session is configured to
+      request `Co-Authored-By` / `Claude-Session` trailers. WP4's four commits were made
+      **without** them, following `CLAUDE.md`. Pick one and the commits can be amended.
+- [ ] **`nanochat-review.md` is still untracked** — along with `slurm-download-data.sh` and an
+      empty `.codex`. The review is the document every finding ID in this file refers to, and
+      an untracked file is exactly the blind spot that hid `plan.md`'s eleven-commit drift.
+      Recommend committing it.
+- [x] **Delivered 2026-09-24:** the WP4 class-imbalance handoff is filed as
+      `yoavram/DataSciPy` **issue #15** (FFN-only session, all numbers, reusable ceiling code,
+      caveats). Nothing further needed here unless that agent comes back with questions.
+
+
 - [ ] **Generated modules in git.** `bpe.py` and `nanochat_model.py` are tracked, so once
       the notebooks generate them every student run dirties the working tree. Commit them
       anyway, or gitignore and generate on first run?
@@ -1130,6 +1154,22 @@ overwrites them and the diff looks like a legitimate result update.
 ---
 
 ## Corrections to the review (from the feasibility audit)
+
+**From WP4, 2026-09-24 — three review items were wrong or misleading as written:**
+
+- **2.6 is described backwards.** The review says cell 25 "has `\\` line breaks that render
+  wrong". The actual defect was three equations sharing one `$$…$$` with **no** `\\` at all,
+  rendering on one line. Fixed with an `aligned` environment.
+- **2.3's premise did not survive measurement.** The review expects per-hand permutations to
+  expose more FFN order-dependence than one shared permutation. Measured: **1.00% per-hand vs
+  1.10% shared** — the stronger test *agrees*. The fix is still right (the old test sampled 1
+  of 120 orderings) but must be reported as agreement, not discovery. An exercise resting on
+  the opposite expectation was replaced.
+- **2.8 is not cosmetic.** The reversed `split` operands swapped which key continued the chain,
+  so fixing it shifted the key stream for two of the three models and moved every number in the
+  notebook. Any package fixing a `split` should expect to re-execute, and should take prose
+  numbers from the notebook's own run rather than from a side script.
+
 
 Record these so a fresh session does not re-derive them or write prose against a claim that
 does not hold.
