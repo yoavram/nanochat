@@ -711,3 +711,57 @@ removed. Losing 0.016% visibly beats corrupting 0.016% silently.
 **Correction to T1:** the `\x92 \x93 \x94` mojibake noted there is a property of the
 **valid** split (3 of its 88 characters). In the train split `\x92` occurs once and
 `\x93`/`\x94` never, so no special-casing is needed — the threshold absorbs them.
+
+### T4 — cleaning moved into the notebook (WP5) · 2026-09-24
+
+Yoav's steer: the cleanup is teaching material, so it lives in `bpe-tokenizer.ipynb`
+and is emitted into `bpe.py` as `clean_corpus`, rather than sitting in a WP-T script.
+`nanochat.ipynb` must clean its pretraining corpus with the *same* function — clean
+differently and the corpus holds characters the vocabulary has no id for.
+
+**Committed tokenizer (valid split, cleaned, `MIN_CHAR_COUNT=100`):**
+
+| | |
+|---|---|
+| characters | 88 distinct → **79 kept** (9 dropped, 158 occurrences) |
+| documents | 27,630 → **27,521** (109 dropped, 0.3945%) |
+| text | 22,067,904 → 21,972,571 chars (0.4320% removed) |
+| vocabulary | **79 characters + 944 merges + 1 special** = 1024 |
+| dropped characters | `–‘—…é\x92\x93\x94ñ` |
+| held-out compression | **2.11×** (405,879 chars → 192,470 tokens) |
+| train time | 50 s |
+
+**Separator cost, re-measured under the cleaned vocabulary:** 2.1089× with 945 merges
+and no separator, **2.1088×** with 944 merges and `<|endoftext|>`. Supersedes the
+2.1065×/2.1061× pair in T2, which was measured before cleaning.
+
+### The teaching contrast: cleaning pays more on bigger corpora
+
+| | valid | train |
+|---|---|---|
+| size | 22.5 MB | 2.23 GB |
+| documents | 27,630 | 2,717,495 |
+| distinct characters | 88 | 228 |
+| kept | 79 | 104 |
+| documents dropped | 109 (**0.39%**) | 389 (**0.014%**) |
+| merges freed | **+9** | **+124** |
+
+100× the text gives 2.6× the characters and almost all of the excess is junk, so the
+benefit of cleaning **rises** with corpus size while its cost in documents **falls**.
+That asymmetry, not the absolute numbers, is the point the notebook makes.
+
+### Cleaning changed the out-of-vocabulary lesson, again
+
+`é` (4 occurrences) and `ñ` (1) fall below the threshold, so the cleaned tokenizer
+**refuses accented Spanish**, which the uncleaned one encoded (T1). Prose rebuilt
+around it: cleaning made the tokenizer better at English and narrower everywhere else,
+replacing an *accidental* boundary with a *stated* one. Both arbitrary; only one can be
+written down, predicted, and changed by editing `MIN_CHAR_COUNT`.
+
+Surviving typographic characters are worth noting: `’ “ ”` kept, `‘ – —` dropped — the
+right single quote doubles as the apostrophe in `don’t` and is everywhere, while the
+left single quote only opens quotations, which these stories rarely use.
+
+**Third prose-ahead-of-measurement correction in this package.** `bpe_encode`'s error
+message also said the characters "never occurred in the training corpus", false for
+anything cleaning removed; it now names both causes.
