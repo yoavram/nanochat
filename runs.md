@@ -494,3 +494,54 @@ removed rather than left to mislead.
   and 486 GB free. No cause was ever established. `setsid` + `nohup` made it
   moot; long runs here should be detached from the session that starts them.
 - `pixi run` needs the repo as its working directory, not the scratchpad.
+
+### S2 — why flush is 0%, and what fixes it · 2026-09-24 · workstation CPU
+
+Follow-up to S1. The rarity explanation committed in `109d6e4` was **wrong** and is
+superseded here; the notebook prose was corrected in `f753ff4`.
+
+**The task does not require suits.** Grouping hands by rank signature alone (multiset
+pattern + whether the ranks form a run) separates 7 of 10 classes perfectly, leaving two
+ambiguous groups — `Nothing|Flush` and `Straight|Straight flush` — both resolvable only by
+suit. So the best possible suit-blind model scores **99.82% plain / 77.78% macro (= 7/9)**,
+and the Set Transformer scores **99.82% / 77.78%** with the identical unreachable set. It
+found the exact optimum of the task posed. Rarity was never the cause: full house (150 val)
+and four of a kind (20 val) are *rarer* than flush (180) and score 100%.
+
+**Diagnostics on the naturally-trained models.** RMS weight per entry, both embedding tables
+initialised at 0.02:
+
+| | suit_emb | rank_emb | ratio |
+|---|---|---|---|
+| Set Transformer | 0.0112 (below init) | 0.1735 | 15.5× |
+| Deep Sets | 0.0289 | 0.5588 | 19.3× |
+| Flattened FFN | 0.2262 (above init) | 0.6553 | 2.9× |
+
+Weight decay shrinks what no gradient defends — but **the FFN keeps a large suit channel and
+still never predicts a flush**, so shrinkage is one route to suit-blindness, not the only one.
+A linear probe on the *frozen* Set Transformer representation recovers **66.1% flush recall
+and 83.76% macro**, above the suit-blind ceiling, at the cost of *Nothing* (34.6%) and plain
+accuracy (66.97%). The information survived; the head had no reason to use it.
+
+**Sampling regimes, 50k steps, only the minibatch sampler differs** (validation):
+
+| | Set Transformer | Flattened FFN |
+|---|---|---|
+| natural | 99.82 / 77.78, flush 0% | 99.11 / 68.18, flush 0% |
+| uniform over classes | **100.0 / 100.0**, flush 100% | 93.09 / 79.90, flush 100% |
+| weight ∝ √count | **100.0 / 100.0**, flush 100% | **99.14 / 84.86**, flush 78.9% |
+
+The FFN is the more informative model here and the reason the follow-up notebook uses it: the
+transformer simply saturates, whereas the FFN shows a real trade (full balancing costs 6
+points of plain accuracy), shows that **aggressive balancing can hurt** (four of a kind
+75.0% → 60.0%), and shows the gentler √ scheme **dominating on both metrics at once**.
+
+**Caveat that limits all of this:** straight flush has 14 training / 1 validation examples and
+royal flush has 8 / 0. Uniform-over-classes puts each in ~10% of every batch — memorisation —
+and validation cannot detect the failure. The Set Transformer's "100% macro" rests partly on
+that and should not be quoted without it.
+
+**Disposition.** `sets.ipynb` carries the ceiling analysis and both diagnostics and stops
+there; the fix is out of scope for a transformers notebook (Yoav, 2026-09-24). Handed to
+`yoavram/DataSciPy` **issue #15** with all numbers, code and caveats, for an FFN-only
+imbalanced-data session on the same dataset.
