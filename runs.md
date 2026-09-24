@@ -663,3 +663,51 @@ does not have to grow to 1025, and `SEGMENT_RE` does **not** shred the literal �
 special handling is needed is that a segment is not a token: without a reserved id the
 separator is encoded character by character and merged like any word, and in this
 vocabulary it raises outright, because `<`, `|` and `>` never occur in TinyStories.
+
+### T3 — how much does cleaning the corpus buy? (WP-T) · 2026-09-24
+
+**Question:** carrying all 228 characters of the train split spends 22% of a 1024-token
+vocabulary. What does trimming the tail cost, and what does it return?
+
+Full train split, 2,226,845,268 characters, 2,717,495 documents, 228 distinct characters.
+
+| keep threshold | chars kept | chars dropped | occurrences affected |
+|---|---|---|---|
+| ≥10 | 108 | 120 | 268 (1.2e-07) |
+| **≥100** | **91** | **137** | **842 (3.8e-07)** |
+| ≥1,000 | 77 | 151 | 5,688 (2.6e-06) |
+| ≥10,000 | 68 | 160 | 39,004 (1.8e-05) |
+| ≥100,000 | 63 | 165 | 215,361 (9.7e-05) |
+
+**The number that decides it:** at threshold 100, only **389 documents of 2,717,495
+(0.0143%)** contain any rare character, totalling **356,591 characters = 0.0163% of the
+corpus**. So the whole tail can be removed by dropping documents, with no text mutation
+anywhere.
+
+### Recommended policy (awaiting sign-off before the retokenise)
+
+**keep = (count ≥ 100) ∪ (printable ASCII present in the corpus) = 104 characters**, and
+drop any document containing anything else.
+
+| | chars | merges | special |
+|---|---|---|---|
+| today (all 228) | 228 | 795 | 1 |
+| count ≥ 100 | 91 | 932 | 1 |
+| **≥100 ∪ ASCII** | **104** | **919** | **1** |
+
+**+124 merges over today, a 15.6% larger merge budget**, for 0.0163% of the corpus. Only
+552 occurrences in 2.23 B fall outside the keep set.
+
+The ASCII clause rescues `\t # % & + = @ [ \ ] { } ~` — rare in children's stories, but
+ordinary in text a student will type. Rare *in the corpus* is not rare *in the inputs*,
+and under raise-on-unknown that distinction is a crash.
+
+**Drop documents, do not edit text.** NFKD rescues only 35 of the 137 rare characters;
+the other 102 have no ASCII form (CJK, `€`, `❤`, small-caps Unicode, zero-width spaces),
+so any mapping scheme needs a document-dropping fallback anyway. More importantly an
+in-place edit corrupts text undetectably — the same failure class as the id-0 bug 7.10
+removed. Losing 0.016% visibly beats corrupting 0.016% silently.
+
+**Correction to T1:** the `\x92 \x93 \x94` mojibake noted there is a property of the
+**valid** split (3 of its 88 characters). In the train split `\x92` occurs once and
+`\x93`/`\x94` never, so no special-casing is needed — the threshold absorbs them.

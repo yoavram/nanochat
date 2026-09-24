@@ -889,12 +889,19 @@ Tasks:
       under raise-on-unknown, since one stray character aborts the encode of the whole
       corpus. Merge statistics converge on a sample; character inventories cannot, because a
       character occurring once is either in the sample or it is not.
-- [ ] **Open, and worth deciding before the retokenise: 228 characters is 22% of the
-      vocabulary, and 137 of them occur fewer than 100 times each** (single instances of
-      `🎓`, `ß`, `{`, `❤`, stray Cyrillic). Spending a fifth of a 1024-token vocabulary
-      encoding the corpus's typos costs ~140 merges. The alternative is to clean the corpus
-      — drop or map the rare characters — and spend those slots on merges instead. Cheap to
-      measure both ways before committing to the 1–3 h encode
+- [ ] **Corpus cleaning — measured 2026-09-24, needs Yoav's sign-off before the encode.**
+      **Proposal: keep = (count ≥ 100) ∪ (printable ASCII present) = 104 characters, and
+      drop any document containing anything else.** Gives 104 chars + **919 merges** + 1
+      special, against today's 228 + 795 + 1 — **+124 merges, a 15.6% larger budget**.
+      **Cost: 389 documents of 2,717,495 (0.0143%), or 0.0163% of the corpus.** Only 552
+      occurrences in 2.23 B fall outside the keep set. Full table in `runs.md` T3.
+      **Drop documents; do not edit text.** NFKD rescues only 35 of the 137 rare characters
+      (the other 102 — CJK, `€`, `❤`, zero-width spaces — have no ASCII form), so mapping
+      needs a document-dropping fallback regardless, and an in-place edit corrupts text
+      undetectably: the same failure class as the id-0 bug 7.10 removed. The ASCII clause
+      costs 13 slots and buys robustness on input a student actually types (`{`, `#`, `%`,
+      `@`, `=`) — rare *in the corpus* is not rare *in the inputs*, and under
+      raise-on-unknown that difference is a crash
 - [x] ~~Verify whether the shipped `checkpoints/bpe_tokenizer.pkl` was trained on the train
       or the valid split.~~ **Answered in WP5: the train split** (227 single-character
       tokens vs the valid split's 88, 0/1024 ids shared). WP5 has since overwritten it
