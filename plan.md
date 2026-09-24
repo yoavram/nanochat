@@ -779,28 +779,76 @@ plain accuracy.
 
 ---
 
-### WP5 — `bpe-tokenizer.ipynb` and `bpe.py`  ⬜ not started
+### WP5 — `bpe-tokenizer.ipynb` and `bpe.py`  ✅ done 2026-09-24 (branch `wp5-bpe-tokenizer`, `90dc41f` → `320b33e`)
 Does A3 (data scale), 7.1–7.7, 7.10 — **minus the rows already closed in WP0** (7.3, 7.9).
 **WP6 depends on this package**: under the code reuse contract `nanochat.ipynb` imports the
 `bpe.py` that this notebook generates. **E5: no biology content this pass** —
 Exercise 4 stays on Spanish/French but must become answerable (see 7.10).
 
-- [ ] Default corpus is `TinyStoriesV2-GPT4-valid.txt` (22.5 MB); the train split is an
+- [x] Default corpus is `TinyStoriesV2-GPT4-valid.txt` (22.5 MB); the train split is an
       explicitly flagged option. Do not hold two copies in memory (7.1, A3)
-- [ ] Vocab sweep on a fixed subsample; rewrite or drop the duplicate Exercise 1 (7.2)
-- [ ] Save the tokenizer to `checkpoints/` (7.3, done under WP0 — verify here)
-- [ ] Put the ~30-line merge loop **inline**, built cell by cell with prose; `%pycat` opens
+- [x] Vocab sweep on a fixed subsample; rewrite or drop the duplicate Exercise 1 (7.2)
+- [x] Save the tokenizer to `checkpoints/` (7.3, done under WP0 — verify here)
+- [x] Put the ~30-line merge loop **inline**, built cell by cell with prose; `%pycat` opens
       a pager and shows the student nothing (7.4). Per the code reuse contract those cells
       also **generate `bpe.py`**, which every downstream notebook and `nanochat_chat.py`
       imports; merges+vocab go to `checkpoints/bpe_tokenizer.pkl`
-- [ ] Add the tokenizer-invariance section: cross-entropy per token is not comparable
+- [x] Add the tokenizer-invariance section: cross-entropy per token is not comparable
       across tokenizers, which is why bpc is the reporting unit (7.5, A4)
-- [ ] **7.10 (S1):** `bpe_encode` silently maps unknown characters to token id 0. Either raise
+- [x] **7.10 (S1):** `bpe_encode` silently maps unknown characters to token id 0. Either raise
       or add an explicit `<unk>` with a reported rate; then fix cell 2's OOV table (7.6) and
       Exercise 4, which currently asks students to count a fallback that does not exist.
       Name byte-level BPE (Exercise 2) as the real answer to OOV
-- [ ] Compression ratio on held-out stories, not `stories[:200]` from training (7.7)
-- [ ] Exercises must not duplicate `nanochat.ipynb`'s (7.8 deferred, 8.17)
+- [x] Compression ratio on held-out stories, not `stories[:200]` from training (7.7)
+- [x] Exercises must not duplicate `nanochat.ipynb`'s (7.8 deferred, 8.17)
+
+---
+
+### WP5 outcome, and what it settled for later packages
+
+**The module emission mechanism is decided and tested** (the plan listed it as
+undecided and blocking). The notebook defines each function normally — so the kernel
+has it and the reader sees it — and one cell writes `bpe.py` from
+`inspect.getsource` over an ordered tuple of the *live* definitions, then
+`importlib.reload`s it and round-trips a string as a check. Reading current bindings
+rather than appending text is what makes it idempotent and order-independent: the cell
+rewrites the whole file every time, so re-running it, or running the cells above out of
+order and regenerating, yields the same module. `%%writefile -a` was rejected for
+exactly the duplication/scrambling trap the plan named. **Verified end to end under
+`nbconvert --execute`, not just in an IPython shell.** Use the same shape for
+`nanochat_model.py` in WP6.
+
+**Decisions taken by Yoav 2026-09-24:**
+
+| Question | Decision |
+|---|---|
+| 7.10 OOV policy | **Raise on unknown characters.** No `<unk>`, no vocab-size change, no forced retokenise from this package. Byte-level BPE is named as the real fix and is Exercise 2. |
+| Generated modules in git | **Keep `bpe.py` tracked and commit it.** A student run dirties the tree; the generated header explains why. Same rule for `nanochat_model.py`. |
+| Commit attribution | **`CLAUDE.md` wins — no `Co-Authored-By`/`Claude-Session` trailers.** The contradictory session config is overridden. WP4's commits need no amending. |
+| `nanochat-review.md` | **Stays untracked**, by Yoav's call. |
+
+**Two things WP5 measured that later packages depend on** (full numbers in `runs.md` T1):
+
+- **The shipped `checkpoints/bpe_tokenizer.pkl` was trained on the *train* split** — 227
+  single-character tokens against the valid split's 88, and **0 of 1024 ids in common**.
+  This answers WP-T's verification row. Consequence: moving the default corpus to the
+  valid split, which WP5 has now done, **invalidates every existing nanochat, SFT and
+  GRPO checkpoint**. They are not merely stale, they are keyed to a different id→string
+  map, and decoding with the new tokenizer produces fluent nonsense with no error. The
+  old tokenizer is preserved as `checkpoints/bpe_tokenizer_trainsplit.pkl` (gitignored).
+  **`nanochat-chat.ipynb` cannot be re-run meaningfully until WP6–WP8 retrain.** That is
+  the price of the corpus change and it was already implied by WP6's planned retrain,
+  but it is now real rather than prospective.
+- **A closed character vocabulary's coverage is an accident of the corpus.** The 88
+  characters include `é` and `ñ` but not `ß`/`ä`/`ü`, so Spanish encodes and German
+  refuses. A draft of the notebook prose asserted the reverse and the first execution
+  falsified it — the fifth instance in this project of prose written ahead of the
+  measurement. The generalisable form of "ceilings before blame": **anything about which
+  inputs a tokenizer covers is cheap to compute and must not be reasoned about.**
+
+**Not done here, deliberately:** `<|endoftext|>` (8.11) is untouched, and `uint16` token
+storage is untouched. Both remain WP-T's, and WP-T's corpus question (which corpus
+*pretrains* nanochat, as distinct from which trains the tokenizer) is still open.
 
 ---
 
@@ -823,8 +871,10 @@ Tasks:
       *pretrains* nanochat.** They can and probably should differ — the valid split is only
       ~10.9 M tokens, i.e. ~17 epochs at the current budget. The plan currently says
       nowhere which is which
-- [ ] Verify whether the shipped `checkpoints/bpe_tokenizer.pkl` was trained on the train
-      or the valid split. This determines whether a retokenise is forced at all
+- [x] ~~Verify whether the shipped `checkpoints/bpe_tokenizer.pkl` was trained on the train
+      or the valid split.~~ **Answered in WP5: the train split** (227 single-character
+      tokens vs the valid split's 88, 0/1024 ids shared). WP5 has since overwritten it
+      with a valid-split tokenizer, so **the retokenise is forced** — see WP5 outcome above
 - [ ] New special tokens go at the **end** of the vocab, never inserted at id 0
 - [ ] **8.11 is not a bullet-sized fix.** A `<|endoftext|>` separator means a new vocab
       entry (1024 → 1025), special-token handling in `bpe_encode` (the `\S+|\s+` segmenter
@@ -1109,11 +1159,9 @@ overwrites them and the diff looks like a legitimate result update.
 
 **Raised 2026-09-24, both trivial but both unresolved:**
 
-- [ ] **Commit attribution is contradictory.** `CLAUDE.md` says "Don't add co-author note to git
-      commit messages" and the saved preference agrees, but this session is configured to
-      request `Co-Authored-By` / `Claude-Session` trailers. WP4's four commits were made
-      **without** them, following `CLAUDE.md`. Pick one and the commits can be amended.
-- [ ] **`nanochat-review.md` is still untracked** — along with `slurm-download-data.sh` and an
+- [x] **Resolved 2026-09-24: `CLAUDE.md` wins — no trailers.** WP4's four commits stand as
+      made; WP5's follow the same rule.
+- [x] **Resolved 2026-09-24: stays untracked**, by Yoav's call. Original note: **`nanochat-review.md` is still untracked** — along with `slurm-download-data.sh` and an
       empty `.codex`. The review is the document every finding ID in this file refers to, and
       an untracked file is exactly the blind spot that hid `plan.md`'s eleven-commit drift.
       Recommend committing it.
@@ -1122,9 +1170,9 @@ overwrites them and the diff looks like a legitimate result update.
       caveats). Nothing further needed here unless that agent comes back with questions.
 
 
-- [ ] **Generated modules in git.** `bpe.py` and `nanochat_model.py` are tracked, so once
-      the notebooks generate them every student run dirties the working tree. Commit them
-      anyway, or gitignore and generate on first run?
+- [x] **Resolved 2026-09-24: keep them tracked and commit them.** A student run dirties
+      the tree; the generated header explains why. Applied to `bpe.py` in WP5, and the same
+      rule governs `nanochat_model.py` in WP6.
 - [ ] **WP-T:** which corpus trains the tokenizer, and which pretrains nanochat?
 - [ ] **8.11:** is the `<|endoftext|>` separator worth a forced retokenise + retrain, or
       defer it?
@@ -1198,6 +1246,7 @@ does not hold.
 
 | Date | WP | What happened |
 |------|----|---------------|
+| 2026-09-24 | WP5 | **`bpe-tokenizer.ipynb` rebuilt and `bpe.py` generated from it** (branch `wp5-bpe-tokenizer`, `90dc41f` → `320b33e`). Closes 7.1, 7.2, 7.4–7.7, 7.10, A3, A4. **The emission mechanism the plan called undecided is now decided and tested end to end under `nbconvert --execute`**: functions are defined normally, one cell emits them via `inspect.getsource` over the live bindings, so it is idempotent and order-independent where `%%writefile -a` would duplicate or scramble — reuse for `nanochat_model.py` in WP6. Yoav's calls: **raise on unknown characters** (no `<unk>`, so no forced vocab change from this package), **keep generated modules tracked**, **no commit trailers**, review file stays untracked. Default corpus is now the 22.5 MB valid split; compression is measured on 500 held-out stories (**2.11×**, 88 characters + 936 merges, 51 s) and the vocab sweep runs on a fixed 5 MB subsample (49 s, was four full-corpus retrainings). New section derives why the course reports **bits per character** — loss per token is not comparable across tokenizers because the tokenizer picks the denominator — with the corpus caveat attached. **Answered a WP-T question in passing: the shipped tokenizer was trained on the train split** (227 single-char tokens vs 88, **0/1024 ids shared**), so the corpus change forces the retokenise and every existing nanochat/SFT/GRPO checkpoint is now keyed to the wrong tokenizer until WP6–WP8 retrain. Old file preserved as `bpe_tokenizer_trainsplit.pkl`. **Prose falsified by its own run, again**: a draft claimed accented Spanish would be refused; TinyStories contains `é`/`ñ`, so Spanish encodes and *German* refuses — corrected, and the accident-of-the-corpus point is now the section's lesson and Exercise 4. The raise also immediately caught a 2 MB sweep subsample missing `4` and `‘` that the old silent id-0 fallback would have hidden. Figures pinned to `dpi=72` (rcParams are overridden by the inline backend, so dpi must be passed per figure): PNG 88.8k → 57.1k chars, and **the executed notebook was verified to still open for editing** — the WP-N criterion. Numbers in `runs.md` T1. |
 | 2026-09-24 | WP4 | **The flush explained, and the fix handed to DataSciPy** (`f753ff4`; issue `yoavram/DataSciPy#15`). Yesterday's rarity explanation was wrong — full house (150 val) and four of a kind (20) are rarer than flush (180) and score 100%. Real cause: **rank alone separates 7 of the 10 classes**, leaving `Nothing|Flush` and `Straight|Straight flush`, so suits are worth ~0.2% of accuracy and the **suit-blind ceiling is 99.82% / 7-of-9 — exactly where the Set Transformer landed**, same unreachable set. The notebook now *computes* that ceiling from the data before any model is mentioned. Two diagnostics added: weight decay drove the transformer's `suit_emb` below its initial scale (15.5x smaller than `rank_emb`), yet a linear probe on the **frozen** representation recovers 66.1% flush recall and 83.76% macro, above the ceiling — the network has the mechanism, keeps the information, and has no reason to use it. **Yoav's scope call: diagnosis stays, fix leaves** — this is a transformers notebook, so resampling/weighting/thresholds go to an FFN-only DataSciPy session (issue #15), keeping execution at ~35 min and one story. Measured for that handoff: balanced sampling takes the transformer to 100%/100% but the FFN to 93.09/79.90, while **√-balanced dominates both metrics for the FFN** (99.14/84.86) and uniform-over-classes *hurts* four of a kind (75→60%). Caveat recorded: straight flush has 14 train / 1 val examples and royal flush 8 / 0, so "100% macro" is partly unfalsifiable. Also corrected pre-commit: a draft generalised "suit embeddings shrank below init" to all three models, which the FFN contradicts (0.2262, above init, and still 0% flush). Numbers in `runs.md` S2. |
 | 2026-09-21 | WP4 | **`sets.ipynb` delivered on branch `sets-revision`** (`c827495` WIP, `109d6e4` executed). All of 2.1–2.10 closed. Set Transformer 77.8% macro = **exactly 7/9**: 100% recall on all seven classes it reaches, 0% on the two suit-defined ones, the same figure in three independent runs across two devices. **Yoav's steer mid-package — this is pedagogical material, not research** — rebuilt the Discussion around the mechanism (*how does each architecture compute "do cards i and j share a rank?"*) and cut the statistical caveats to a sentence each; **this steer applies to WP5–WP10 too**. Three findings the review did not anticipate: 2.6 is described backwards in the review (the defect is a **missing** `\\`, not a broken one); 2.3's stronger per-hand permutation test **agrees** with the weak one (1.00% vs 1.10%) rather than exposing more, so a planned exercise resting on the opposite expectation was replaced with an attention ablation; and 2.8's reversed `split` is **not cosmetic** — it shifted the key stream for two models, so every number moved and prose numbers had to come from the notebook's own run. **The plan's CPU-vs-GPU explanation for Deep Sets not reproducing is wrong** — two further CPU runs gave 85.1% and 77.6% against a committed 92.1%; Yoav's mistuned-LR reading fits far better and is now exercise 6. **`sets.ipynb` hit the WP-N edit wall mid-package** at 29,577 tokens, having been comfortably under it when I checked an hour earlier — recovered by cutting printed training logs 200 → 20 lines per model. Corrected before committing: a draft claimed the FFN "fades as hands get rarer", which its own non-monotone column refutes (C5/C7 again). |
 | 2026-09-21 | — | **`plan.md` reconciled against `git log` — it had drifted eleven commits.** The session log stopped at `57b55df` while `runs.md` stayed current, so the plan still called WP2 and WP3 "not started" after both had been delivered, and still carried the single-seed decision that W4 overturned. Closed WP2 (Yoav, four prose rows struck through rather than finished — BPTT unnamed, ResearchGate links surviving, nanoGPT uncited, GRU LN un-ablated and kept as an open item) and WP3 (done and overtaken: two of its specification rows were *reversed by measurement*, and its conclusion is not the one the review expected — the GRU wins on bpc). Added **WP-N** for the notebook-size problem that has no tool path around it. The C6/C7 prose debt is delegated to its own issue; the LR-sweep handoff is retired and `handoff-lr-sweep.md` deleted. `plan.md` is now tracked in git — it had been untracked all along, which is why none of this drift was visible. **Rule added to the ground rules: reconcile against `git log` at the start of a session, not only at the end.** |

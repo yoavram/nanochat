@@ -545,3 +545,72 @@ that and should not be quoted without it.
 there; the fix is out of scope for a transformers notebook (Yoav, 2026-09-24). Handed to
 `yoavram/DataSciPy` **issue #15** with all numbers, code and caveats, for an FFN-only
 imbalanced-data session on the same dataset.
+
+---
+
+## T1 — the BPE tokenizer, rebuilt on the valid split (WP5) · 2026-09-24 · workstation CPU
+
+**Question:** what does the tokenizer look like when it is trained on the 22.5 MB
+validation split instead of the 2.23 GB training split, and is the notebook's default
+corpus change safe for the rest of the chain?
+
+Pure Python, no accelerator. Corpus `data/TinyStoriesV2-GPT4-valid.txt`, 27,630 stories
+split 27,130 train / 500 held out, 21,688,860 training characters.
+
+| | |
+|---|---|
+| vocab | **1024 = 88 characters + 936 merges** |
+| train time | **51 s** for 1024 merges on 21.7 M characters |
+| held-out compression | **2.11×** (406,672 characters → 193,059 tokens) |
+| longest token | `'unexpected'` |
+| first merges | `he`, `an`, `the`, `ed`, `to`, `and`, `in`, `re`, `it`, `wa` |
+
+Vocab-size sweep, trained on a fixed 5 MB subsample (49 s total), measured on held-out:
+
+| vocab | 128 | 256 | 512 | 1024 |
+|---|---|---|---|---|
+| held-out ratio | 1.323 | 1.635 | 1.892 | 2.107 |
+
+The 5 MB subsample reproduces the full-corpus point to within 0.004, so the subsample
+does not distort the curve.
+
+### The shipped tokenizer was trained on the *train* split — WP-T's open question, answered
+
+`checkpoints/bpe_tokenizer.pkl` as committed had **227** single-character tokens; the
+valid split yields **88**. That settles WP-T's verification row: the two corpora give
+different vocabularies, **0 of 1024 ids are unchanged**, and so moving the notebook's
+default corpus to the valid split *does* force a retokenise and invalidates every
+existing nanochat checkpoint. The old file is preserved as
+`checkpoints/bpe_tokenizer_trainsplit.pkl` (gitignored) rather than lost.
+
+### Two hazards the new raise-on-unknown encoder exposed immediately
+
+1. **A 2 MB sweep subsample lacks `4` and `‘`, which occur in held-out text.** Under the
+   old `encoder.get(c, 0)` this would have silently encoded them as token id 0 and the
+   sweep would have reported slightly wrong ratios with no signal at all. The subsample
+   is 5 MB for this reason, with an assertion that it covers the held-out character set.
+2. **A vocabulary smaller than the corpus's character inventory is ill-posed**, not
+   small: `vocab_size=64` against 81 characters returns a vocabulary of 81. The sweep
+   starts at 128.
+
+### The corpus decides which languages work, and not in the way you would guess
+
+The 88 characters include **`é` and `ñ`** (children's-story names) but not `ß`, `ä` or
+`ü`. So accented Spanish encodes cleanly at 1.27× while German is refused. A draft of
+the notebook prose asserted the opposite — that accented Spanish would be refused — and
+the first execution falsified it. Corrected before commit. Recorded here because the
+same trap is live for anyone writing prose about tokenizer coverage: the covered set is
+an accident of the corpus, so it has to be measured, not reasoned about.
+
+Also present in the vocabulary: `\x92`, `\x93`, `\x94` — Windows-1252 smart quotes that
+were mis-decoded somewhere upstream of TinyStories. Three of the 88 slots are mojibake.
+
+### Fallback rates on the committed tokenizer
+
+| text | result |
+|---|---|
+| English, in distribution | 11 tokens, 2.82×, 45% single-character |
+| English, unseen words | 23 tokens, 1.61×, 52% single-character |
+| Spanish, accents and all | 26 tokens, 1.27×, 73% single-character |
+| German | **refused** — `ß`, `ä`, `ü` |
+| English + emoji | **refused** — `🙂` |
