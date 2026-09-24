@@ -10,7 +10,10 @@ import re
 from tqdm.auto import tqdm
 
 SEGMENT_RE = re.compile(r'\S+|\s+')
+SPECIAL_TOKEN_RE = re.compile(r'^<\|.+\|>$')
 DEFAULT_TOKENIZER_PATH = 'checkpoints/bpe_tokenizer.pkl'
+
+END_OF_TEXT = '<|endoftext|>'
 
 def word_frequencies(text):
     """Split text into segments and count how often each one occurs."""
@@ -20,16 +23,34 @@ def word_frequencies(text):
     return freq
 
 
-def bpe_train(text, vocab_size=512, verbose=True, show_first=10, every=200):
+def bpe_train(text, vocab_size=512, special_tokens=(), chars=None, verbose=True,
+              show_first=10, every=200):
     """
     Train a BPE tokenizer on text.
+
+    special_tokens are reserved ids at the END of the vocabulary. They take no part
+    in merging - they are markers the model must never see split apart - so they are
+    appended after the merge loop and simply reduce the merge budget.
+
+    chars overrides the character inventory, which is otherwise taken from `text`.
+    Pass it when learning merges from a sample of a larger corpus: merge frequencies
+    converge on a sample, but the *character set* does not, and any character missing
+    from the vocabulary makes bpe_encode raise on the full corpus later.
 
     Returns:
         vocab  - list of token strings; index = token id
         merges - list of (id_a, id_b) merge rules in training order
     """
     # The vocabulary starts as every character in the corpus, sorted for reproducibility.
-    chars = sorted(set(text))
+    if chars is None:
+        chars = sorted(set(text))
+    else:
+        chars = sorted(set(chars))
+        missing = sorted(set(text) - set(chars))
+        if missing:
+            raise ValueError(
+                f"`chars` omits {len(missing)} character(s) present in the training "
+                f"text: {''.join(missing[:20])!r}")
     vocab = chars[:]
     encoder = {c: i for i, c in enumerate(chars)}
     merges = []
@@ -37,9 +58,18 @@ def bpe_train(text, vocab_size=512, verbose=True, show_first=10, every=200):
     # Each unique segment is held as a tuple of ids, and carries its frequency.
     word_freq = word_frequencies(text)
     word_ids = {w: tuple(encoder[c] for c in w) for w in word_freq}
-    n_merges = vocab_size - len(vocab)
 
-    while len(vocab) < vocab_size:
+    # Reserve the tail of the vocabulary for the special tokens.
+    merge_target = vocab_size - len(special_tokens)
+    n_merges = merge_target - len(chars)
+    if n_merges < 0:
+        raise ValueError(
+            f"vocab_size={vocab_size} is too small: the character inventory has "
+            f"{len(chars)} entries and {len(special_tokens)} special token(s) are "
+            f"reserved, so at least {len(chars) + len(special_tokens)} ids are needed "
+            f"before any merging.")
+
+    while len(vocab) < merge_target:
         # Count adjacent pairs across unique segments, weighted by frequency.
         counts = {}
         for w, freq in word_freq.items():
@@ -76,10 +106,14 @@ def bpe_train(text, vocab_size=512, verbose=True, show_first=10, every=200):
                   f"{vocab[best[0]]!r} + {vocab[best[1]]!r} -> {new_tok!r} "
                   f"({counts[best]:,} occurrences)")
 
+    vocab.extend(special_tokens)
+
     if verbose:
         total = sum(len(word_ids[w]) * f for w, f in word_freq.items())
-        print(f"Done: vocab_size={len(vocab)} ({len(chars)} characters + {len(merges)} merges), "
-              f"corpus compressed to {total:,} tokens ({len(text)/total:.2f} characters per token)")
+        extra = f" + {len(special_tokens)} special" if special_tokens else ""
+        print(f"Done: vocab_size={len(vocab)} ({len(chars)} characters + "
+              f"{len(merges)} merges{extra}), training text compressed to {total:,} "
+              f"tokens ({len(text)/total:.2f} characters per token)")
     return vocab, merges
 
 
@@ -102,6 +136,10 @@ def bpe_encode(text, vocab, merges, verbose=None):
     """
     Convert text to a list of token ids.
 
+    Special tokens (anything shaped <|...|>) are split out of the text first and each
+    becomes exactly one id. They must not reach SEGMENT_RE, which would shred the
+    literal into characters and merge the pieces into ordinary tokens.
+
     Raises ValueError if text contains a character the tokenizer never saw during
     training. This tokenizer is character-based, so its vocabulary is closed: there
     is no fallback that could represent an unseen character. A byte-level BPE has no
@@ -109,7 +147,17 @@ def bpe_encode(text, vocab, merges, verbose=None):
     """
     encoder = {t: i for i, t in enumerate(vocab)}
 
-    unknown = sorted(set(text) - set(vocab))
+    # Longest first, so <|endoftext|> wins over any special that is a prefix of it.
+    specials = sorted((t for t in vocab if SPECIAL_TOKEN_RE.match(t)),
+                      key=len, reverse=True)
+    if specials:
+        chunks = re.split('(' + '|'.join(re.escape(t) for t in specials) + ')', text)
+    else:
+        chunks = [text]
+    special_set = set(specials)
+
+    plain = ''.join(c for c in chunks if c not in special_set)
+    unknown = sorted(set(plain) - set(vocab))
     if unknown:
         shown = ''.join(unknown[:20])
         raise ValueError(
@@ -122,8 +170,9 @@ def bpe_encode(text, vocab, merges, verbose=None):
     merge_rules = [(a, b, encoder[vocab[a] + vocab[b]]) for a, b in merges]
 
     # Identical segments encode identically, so encode each distinct one once.
-    segments = SEGMENT_RE.findall(text)
-    unique_segments = list(dict.fromkeys(segments))
+    chunk_segments = [None if c in special_set else SEGMENT_RE.findall(c) for c in chunks]
+    unique_segments = list(dict.fromkeys(
+        s for segs in chunk_segments if segs is not None for s in segs))
     show_progress = len(unique_segments) > 1000 if verbose is None else verbose
 
     encoded_cache = {}
@@ -132,8 +181,12 @@ def bpe_encode(text, vocab, merges, verbose=None):
         encoded_cache[segment] = _apply_bpe_merges(ids, merge_rules)
 
     encoded = []
-    for segment in segments:
-        encoded.extend(encoded_cache[segment])
+    for chunk, segments in zip(chunks, chunk_segments):
+        if segments is None:
+            encoded.append(encoder[chunk])          # one id for the whole special token
+        else:
+            for segment in segments:
+                encoded.extend(encoded_cache[segment])
     return encoded
 
 
