@@ -614,3 +614,52 @@ were mis-decoded somewhere upstream of TinyStories. Three of the 88 slots are mo
 | Spanish, accents and all | 26 tokens, 1.27×, 73% single-character |
 | German | **refused** — `ß`, `ä`, `ü` |
 | English + emoji | **refused** — `🙂` |
+
+### T2 — `<|endoftext|>` and the corpus-sampling measurement (WP5/WP-T) · 2026-09-24
+
+**Question:** does Yoav's plan — train BPE on 10% of the train split, pretrain nanochat
+on all of it — work under the raise-on-unknown encoder?
+
+**Answer: yes, with one fix.** Full train split `data/TinyStoriesV2-GPT4-train.txt`,
+2,226,845,268 characters.
+
+| sample | distinct chars seen | chars missed | occurrences those cover |
+|---|---|---|---|
+| first 1% | 93 | 135 | 889 |
+| first 5% | 150 | 78 | 655 |
+| **first 10%** | **158** | **70** | **296** |
+| first 25% | 177 | 51 | 146 |
+| **full** | **228** | — | — |
+
+296 occurrences out of 2.23 B is 1.3e-7 of the corpus — utterly negligible by
+frequency, and yet each one aborts the encode of the whole corpus, because the
+vocabulary is closed and `bpe_encode` now raises. **Merge statistics converge on a
+sample; character inventories cannot**, since a character occurring once is either in
+the sample or it is not.
+
+Fix shipped in WP5: `bpe_train(chars=...)` overrides the character inventory, so merges
+come from the sample and the character set from one full `set()` pass.
+
+**The long tail is mostly junk.** 137 of the 228 characters occur fewer than 100 times
+each; the rarest include single instances of `🎓`, `İ`, `−`, `і`, `ß`, `‌`,
+``, `{`, `}`, `🤩`, `❤`, `¢`, `‚`, `ú`. Carrying all 228 spends **22% of a 1024
+vocabulary** on characters and leaves ~140 fewer merges. Open question for WP-T:
+clean the corpus instead.
+
+### `<|endoftext|>` as committed (valid-split tokenizer)
+
+| | |
+|---|---|
+| vocabulary | 1024 = **88 characters + 935 merges + 1 special** |
+| separator id | **1023** (last), one token, round-trips exactly |
+| compression cost | held-out **2.1065× → 2.1061×** (193,059 → 193,095 tokens) |
+
+Reserved *out of* the 1024 budget, not appended to it, so nanochat's embedding and
+output head keep their shape — 8.11 forces no retrain by itself.
+
+**Two premises in `plan.md`'s own 8.11 row were wrong**, both corrected there: the vocab
+does not have to grow to 1025, and `SEGMENT_RE` does **not** shred the literal —
+`<|endoftext|>` contains no whitespace, so `\S+` matches all of it. The actual reason
+special handling is needed is that a segment is not a token: without a reserved id the
+separator is encoded character by character and merged like any word, and in this
+vocabulary it raises outright, because `<`, `|` and `>` never occur in TinyStories.

@@ -867,19 +867,53 @@ following breaks all three — **even if 8.1 is not confirmed**:
 
 Tasks:
 
-- [ ] **Decide and write down which corpus trains the *tokenizer* versus which corpus
-      *pretrains* nanochat.** They can and probably should differ — the valid split is only
-      ~10.9 M tokens, i.e. ~17 epochs at the current budget. The plan currently says
-      nowhere which is which
+- [x] **Decided by Yoav 2026-09-24: BPE trains on ~10% of the train split; nanochat
+      pretrains on the *full* train split.** They differ, which is the normal arrangement —
+      merge frequencies converge on a sample long before the model has seen enough data.
+      The valid split is ruled out for pretraining (~10.9 M tokens = ~17 epochs at the
+      current budget, i.e. memorisation). `data/TinyStoriesV2-GPT4-train.txt` is now on
+      disk (2,226,845,268 characters; disk at 97%, 34 GB free).
+      **This requires the `chars=` fix below — without it the plan does not work.**
+- [x] **The one-line fix that makes the 10% sample safe — shipped in WP5.** `bpe_train`
+      now takes `chars=`, overriding the character inventory:
+
+      ```python
+      chars = sorted(set(full_corpus))            # one cheap pass, no merging
+      vocab, merges = bpe_train(sample, vocab_size=1024,
+                                special_tokens=(END_OF_TEXT,), chars=chars)
+      ```
+
+      **Why it is needed, measured on the real corpus:** the full train split has **228
+      distinct characters**; a 10% sample sees **158** and misses **70**. Those 70 cover
+      **296 occurrences out of 2.23 billion** (1.3e-7) — negligible by frequency and fatal
+      under raise-on-unknown, since one stray character aborts the encode of the whole
+      corpus. Merge statistics converge on a sample; character inventories cannot, because a
+      character occurring once is either in the sample or it is not.
+- [ ] **Open, and worth deciding before the retokenise: 228 characters is 22% of the
+      vocabulary, and 137 of them occur fewer than 100 times each** (single instances of
+      `🎓`, `ß`, `{`, `❤`, stray Cyrillic). Spending a fifth of a 1024-token vocabulary
+      encoding the corpus's typos costs ~140 merges. The alternative is to clean the corpus
+      — drop or map the rare characters — and spend those slots on merges instead. Cheap to
+      measure both ways before committing to the 1–3 h encode
 - [x] ~~Verify whether the shipped `checkpoints/bpe_tokenizer.pkl` was trained on the train
       or the valid split.~~ **Answered in WP5: the train split** (227 single-character
       tokens vs the valid split's 88, 0/1024 ids shared). WP5 has since overwritten it
       with a valid-split tokenizer, so **the retokenise is forced** — see WP5 outcome above
-- [ ] New special tokens go at the **end** of the vocab, never inserted at id 0
-- [ ] **8.11 is not a bullet-sized fix.** A `<|endoftext|>` separator means a new vocab
-      entry (1024 → 1025), special-token handling in `bpe_encode` (the `\S+|\s+` segmenter
-      would shred the literal), a full retokenise, new embedding and head shapes, and a
-      retrain. Budget it as such
+- [x] ~~New special tokens go at the **end** of the vocab, never inserted at id 0~~
+      **Done in WP5**: `bpe_train(special_tokens=...)` appends after the merge loop, so every
+      ordinary token keeps the id it would otherwise have had
+- [x] **8.11 done in WP5** (`537c83b`), and it was smaller than budgeted here because two
+      of this row's premises were wrong. **The vocabulary does not grow to 1025**: the token
+      is reserved *out of* the 1024 budget (88 characters + 935 merges + 1 special,
+      `<|endoftext|>` at id 1023), so embedding and head shapes are unchanged and no new
+      shapes or retrain follow from 8.11 itself. **And the `\S+|\s+` segmenter does not
+      shred the literal** — `<|endoftext|>` contains no whitespace, so `\S+` matches all of
+      it; the demo cell prints this. The real argument for special handling is that a segment
+      is not a token: without a reserved id the separator would be encoded character by
+      character and merged like an ordinary word, and here it would raise outright, since
+      `<`, `|` and `>` never occur in TinyStories. Cost measured: one merge, held-out
+      compression 2.1065× → 2.1061×. **The retokenise is still required**, but by the corpus
+      change, not by this row
 - [ ] **Store tokens as `uint16`, not `int64`.** Today cell 40 does `jnp.array(train_data)`,
       putting 7.65 GB of train tokens plus 0.85 GB of val on a 16 GB card — around 12–13 GB
       total with params, Adam state and materialised attention weights, against XLA's
@@ -1173,9 +1207,11 @@ overwrites them and the diff looks like a legitimate result update.
 - [x] **Resolved 2026-09-24: keep them tracked and commit them.** A student run dirties
       the tree; the generated header explains why. Applied to `bpe.py` in WP5, and the same
       rule governs `nanochat_model.py` in WP6.
-- [ ] **WP-T:** which corpus trains the tokenizer, and which pretrains nanochat?
-- [ ] **8.11:** is the `<|endoftext|>` separator worth a forced retokenise + retrain, or
-      defer it?
+- [x] **Resolved 2026-09-24: BPE on ~10% of the train split, nanochat pretrains on the
+      full train split.** See WP-T; needs the `chars=` fix, which WP5 shipped.
+- [x] **Resolved 2026-09-24: add it.** Done in WP5 (`537c83b`) and it did not force
+      anything on its own — the token is reserved out of the 1024 budget, so shapes are
+      unchanged. The retokenise it shares is the one the corpus change already forced.
 - [ ] **RMS QK-norm:** learnable per-head gain, or not? Changes the checkpoint schema.
 
 - [ ] **Checkpoint distribution** (B6) — deferred by Yoav. Revisit before delivery: without
@@ -1246,6 +1282,7 @@ does not hold.
 
 | Date | WP | What happened |
 |------|----|---------------|
+| 2026-09-24 | WP5/WP-T | **`<|endoftext|>` added, and the corpus policy decided** (`537c83b`). Yoav: **BPE trains on ~10% of the train split, nanochat pretrains on the full train split** — the valid split is ruled out for pretraining (~17 epochs = memorisation). That plan needs one fix, now shipped: `bpe_train(chars=...)` overrides the character inventory, so merges are learned from the sample while the character set comes from a full pass. **Measured, and the reason it is not optional:** the full 2.23 GB train split has **228 distinct characters**, a 10% sample sees **158**, and the **70** it misses cover **296 occurrences out of 2.23 billion** — negligible by frequency, fatal under raise-on-unknown. Merge statistics converge on a sample; character inventories cannot. **Two of the plan's own premises about 8.11 were wrong**: the vocabulary does *not* grow to 1025 (the token is reserved out of the 1024 budget — 88 chars + 935 merges + 1 special at id 1023, so embedding/head shapes are unchanged and 8.11 forces no retrain by itself), and the `\S+|\s+` segmenter does *not* shred the literal (`<|endoftext|>` has no whitespace, so `\S+` takes all of it — the demo cell prints this). The real argument is that a segment is not a token. Cost of the separator: one merge, 2.1065× → 2.1061×. **Left open for WP-T:** 228 characters is 22% of the vocabulary and 137 of them occur <100 times each, so cleaning the corpus instead would buy back ~140 merges — worth measuring before paying for the 1–3 h encode. Train split now on disk; disk at **97%, 34 GB free**. |
 | 2026-09-24 | WP5 | **`bpe-tokenizer.ipynb` rebuilt and `bpe.py` generated from it** (branch `wp5-bpe-tokenizer`, `90dc41f` → `320b33e`). Closes 7.1, 7.2, 7.4–7.7, 7.10, A3, A4. **The emission mechanism the plan called undecided is now decided and tested end to end under `nbconvert --execute`**: functions are defined normally, one cell emits them via `inspect.getsource` over the live bindings, so it is idempotent and order-independent where `%%writefile -a` would duplicate or scramble — reuse for `nanochat_model.py` in WP6. Yoav's calls: **raise on unknown characters** (no `<unk>`, so no forced vocab change from this package), **keep generated modules tracked**, **no commit trailers**, review file stays untracked. Default corpus is now the 22.5 MB valid split; compression is measured on 500 held-out stories (**2.11×**, 88 characters + 936 merges, 51 s) and the vocab sweep runs on a fixed 5 MB subsample (49 s, was four full-corpus retrainings). New section derives why the course reports **bits per character** — loss per token is not comparable across tokenizers because the tokenizer picks the denominator — with the corpus caveat attached. **Answered a WP-T question in passing: the shipped tokenizer was trained on the train split** (227 single-char tokens vs 88, **0/1024 ids shared**), so the corpus change forces the retokenise and every existing nanochat/SFT/GRPO checkpoint is now keyed to the wrong tokenizer until WP6–WP8 retrain. Old file preserved as `bpe_tokenizer_trainsplit.pkl`. **Prose falsified by its own run, again**: a draft claimed accented Spanish would be refused; TinyStories contains `é`/`ñ`, so Spanish encodes and *German* refuses — corrected, and the accident-of-the-corpus point is now the section's lesson and Exercise 4. The raise also immediately caught a 2 MB sweep subsample missing `4` and `‘` that the old silent id-0 fallback would have hidden. Figures pinned to `dpi=72` (rcParams are overridden by the inline backend, so dpi must be passed per figure): PNG 88.8k → 57.1k chars, and **the executed notebook was verified to still open for editing** — the WP-N criterion. Numbers in `runs.md` T1. |
 | 2026-09-24 | WP4 | **The flush explained, and the fix handed to DataSciPy** (`f753ff4`; issue `yoavram/DataSciPy#15`). Yesterday's rarity explanation was wrong — full house (150 val) and four of a kind (20) are rarer than flush (180) and score 100%. Real cause: **rank alone separates 7 of the 10 classes**, leaving `Nothing|Flush` and `Straight|Straight flush`, so suits are worth ~0.2% of accuracy and the **suit-blind ceiling is 99.82% / 7-of-9 — exactly where the Set Transformer landed**, same unreachable set. The notebook now *computes* that ceiling from the data before any model is mentioned. Two diagnostics added: weight decay drove the transformer's `suit_emb` below its initial scale (15.5x smaller than `rank_emb`), yet a linear probe on the **frozen** representation recovers 66.1% flush recall and 83.76% macro, above the ceiling — the network has the mechanism, keeps the information, and has no reason to use it. **Yoav's scope call: diagnosis stays, fix leaves** — this is a transformers notebook, so resampling/weighting/thresholds go to an FFN-only DataSciPy session (issue #15), keeping execution at ~35 min and one story. Measured for that handoff: balanced sampling takes the transformer to 100%/100% but the FFN to 93.09/79.90, while **√-balanced dominates both metrics for the FFN** (99.14/84.86) and uniform-over-classes *hurts* four of a kind (75→60%). Caveat recorded: straight flush has 14 train / 1 val examples and royal flush 8 / 0, so "100% macro" is partly unfalsifiable. Also corrected pre-commit: a draft generalised "suit embeddings shrank below init" to all three models, which the FFN contradicts (0.2262, above init, and still 0% flush). Numbers in `runs.md` S2. |
 | 2026-09-21 | WP4 | **`sets.ipynb` delivered on branch `sets-revision`** (`c827495` WIP, `109d6e4` executed). All of 2.1–2.10 closed. Set Transformer 77.8% macro = **exactly 7/9**: 100% recall on all seven classes it reaches, 0% on the two suit-defined ones, the same figure in three independent runs across two devices. **Yoav's steer mid-package — this is pedagogical material, not research** — rebuilt the Discussion around the mechanism (*how does each architecture compute "do cards i and j share a rank?"*) and cut the statistical caveats to a sentence each; **this steer applies to WP5–WP10 too**. Three findings the review did not anticipate: 2.6 is described backwards in the review (the defect is a **missing** `\\`, not a broken one); 2.3's stronger per-hand permutation test **agrees** with the weak one (1.00% vs 1.10%) rather than exposing more, so a planned exercise resting on the opposite expectation was replaced with an attention ablation; and 2.8's reversed `split` is **not cosmetic** — it shifted the key stream for two models, so every number moved and prose numbers had to come from the notebook's own run. **The plan's CPU-vs-GPU explanation for Deep Sets not reproducing is wrong** — two further CPU runs gave 85.1% and 77.6% against a committed 92.1%; Yoav's mistuned-LR reading fits far better and is now exercise 6. **`sets.ipynb` hit the WP-N edit wall mid-package** at 29,577 tokens, having been comfortably under it when I checked an hour earlier — recovered by cutting printed training logs 200 → 20 lines per model. Corrected before committing: a draft claimed the FFN "fades as hands get rarer", which its own non-monotone column refutes (C5/C7 again). |
