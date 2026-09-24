@@ -779,7 +779,7 @@ plain accuracy.
 
 ---
 
-### WP5 — `bpe-tokenizer.ipynb` and `bpe.py`  ✅ done 2026-09-24 (branch `wp5-bpe-tokenizer`, `90dc41f` → `320b33e`)
+### WP5 — `bpe-tokenizer.ipynb` and `bpe.py`  ✅ done 2026-09-24 (branch `wp5-bpe-tokenizer`, `90dc41f` → `ba0d369`)
 Does A3 (data scale), 7.1–7.7, 7.10 — **minus the rows already closed in WP0** (7.3, 7.9).
 **WP6 depends on this package**: under the code reuse contract `nanochat.ipynb` imports the
 `bpe.py` that this notebook generates. **E5: no biology content this pass** —
@@ -941,6 +941,15 @@ Tasks:
 
 ### WP6 — `nanochat.ipynb`  ⬜ not started
 **Depends on WP5** (it imports the `bpe.py` that `bpe-tokenizer.ipynb` generates).
+
+- [ ] **Clean the pretraining corpus with `clean_corpus`, at the same `min_count` the
+      tokenizer was built with, and assert it.** This is a hard coupling, not a convention:
+      clean with a different threshold and the corpus contains characters the vocabulary has
+      no id for, and `bpe_encode` raises **partway through encoding 2.23 GB** — an hour in.
+      Cheap to hit, tedious to debug. Check `set(corpus) <= set(vocab)` before starting the
+      encode, not during it. The tokenizer pickle does not record `min_count`, so either
+      re-derive the inventory from the saved vocabulary (`[t for t in vocab if len(t)==1]`)
+      or pass the threshold explicitly.
 **Step 1 happens before any edit.**
 
 - [ ] **8.1 is already confirmed by arithmetic, so the entropy measurement is not a gate.**
@@ -1200,6 +1209,23 @@ checked. Nothing in `.gitignore` touches `solutions/`, so all three are tracked.
 **Solutions must never write to `checkpoints/charlm_result_*.json`.** Those are the
 committed rows of the comparison table; a sweep that runs through the notebooks
 overwrites them and the diff looks like a legitimate result update.
+
+---
+
+## Branch state (2026-09-24)
+
+Neither revision branch has been merged to `main`, and they are **stacked**:
+
+```
+main
+ └── sets-revision      WP4, 6 commits (c827495 → 6af3a06)
+      └── wp5-bpe-tokenizer   WP5 + WP-T, 7 commits (90dc41f → ba0d369)
+```
+
+So `wp5-bpe-tokenizer` carries WP4's commits too, and pushing or merging it brings both.
+The ground rules call for one PR per work package; that would mean merging `sets-revision`
+first, then `wp5-bpe-tokenizer` on top. **Yoav's call whether to keep them separate or land
+them together.**
 
 ---
 
