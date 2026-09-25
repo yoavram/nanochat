@@ -12,7 +12,6 @@ import string
 from tqdm.auto import tqdm
 
 SEGMENT_RE = re.compile(r'\S+|\s+')
-SPECIAL_TOKEN_RE = re.compile(r'^<\|.+\|>$')
 DEFAULT_TOKENIZER_PATH = 'checkpoints/bpe_tokenizer.pkl'
 
 END_OF_TEXT = '<|endoftext|>'
@@ -30,6 +29,13 @@ def bpe_train(text, vocab_size=512, special_tokens=(), chars=None, verbose=True,
     """
     Train a BPE tokenizer on text.
 
+    The vocabulary is laid out in three blocks, and everything downstream relies on it:
+
+        [ characters ][ merges, in the order learned ][ special tokens ]
+
+    so the merge of rank i always lives at id len(chars) + i, and the special tokens
+    always occupy the tail. `vocab_layout` below recovers the block boundaries.
+
     special_tokens are reserved ids at the END of the vocabulary. They take no part
     in merging - they are markers the model must never see split apart - so they are
     appended after the merge loop and simply reduce the merge budget.
@@ -42,6 +48,9 @@ def bpe_train(text, vocab_size=512, special_tokens=(), chars=None, verbose=True,
     Returns:
         vocab  - list of token strings; index = token id
         merges - list of (id_a, id_b) merge rules in training order
+
+    len(vocab) == vocab_size UNLESS the corpus runs out of pairs to merge, which can
+    happen on a tiny corpus; the function says so rather than failing quietly.
     """
     # The vocabulary starts as every character in the corpus, sorted for reproducibility.
     if chars is None:
@@ -71,6 +80,7 @@ def bpe_train(text, vocab_size=512, special_tokens=(), chars=None, verbose=True,
             f"reserved, so at least {len(chars) + len(special_tokens)} ids are needed "
             f"before any merging.")
 
+    exhausted = False
     while len(vocab) < merge_target:
         # Count adjacent pairs across unique segments, weighted by frequency.
         counts = {}
@@ -79,6 +89,7 @@ def bpe_train(text, vocab_size=512, special_tokens=(), chars=None, verbose=True,
             for a, b in zip(ids, ids[1:]):
                 counts[(a, b)] = counts.get((a, b), 0) + freq
         if not counts:
+            exhausted = True
             break   # every segment is a single token; nothing left to merge
 
         # The most frequent pair becomes the next token.
@@ -110,6 +121,10 @@ def bpe_train(text, vocab_size=512, special_tokens=(), chars=None, verbose=True,
 
     vocab.extend(special_tokens)
 
+    if exhausted and verbose:
+        print(f"  stopped after {len(merges)} of {n_merges} merges: the corpus has no "
+              f"adjacent pairs left to merge, so every segment is already a single "
+              f"token. The vocabulary is {len(vocab)}, not the {vocab_size} requested.")
     if verbose:
         total = sum(len(word_ids[w]) * f for w, f in word_freq.items())
         extra = f" + {len(special_tokens)} special" if special_tokens else ""
@@ -117,6 +132,28 @@ def bpe_train(text, vocab_size=512, special_tokens=(), chars=None, verbose=True,
               f"{len(merges)} merges{extra}), training text compressed to {total:,} "
               f"tokens ({len(text)/total:.2f} characters per token)")
     return vocab, merges
+
+
+def vocab_layout(vocab, merges):
+    """
+    Recover the [characters][merges][specials] block boundaries of a vocabulary.
+
+    The character block is exactly the leading run of single-character tokens: a
+    merge concatenates two tokens so it is never shorter than two characters, and
+    special tokens are appended last. Everything after the characters and the
+    merges is therefore a special token.
+
+    Returns (n_chars, n_special).
+    """
+    n_chars = 0
+    while n_chars < len(vocab) and len(vocab[n_chars]) == 1:
+        n_chars += 1
+    n_special = len(vocab) - n_chars - len(merges)
+    if n_special < 0:
+        raise ValueError(
+            f"vocab and merges disagree: {len(vocab)} tokens, {n_chars} characters "
+            f"and {len(merges)} merges leaves no room for the merge block.")
+    return n_chars, n_special
 
 
 def _apply_bpe_merges(ids, merge_rules):
@@ -138,28 +175,37 @@ def bpe_encode(text, vocab, merges, verbose=None):
     """
     Convert text to a list of token ids.
 
-    Special tokens (anything shaped <|...|>) are split out of the text first and each
-    becomes exactly one id. They must not reach SEGMENT_RE, which would shred the
-    literal into characters and merge the pieces into ordinary tokens.
+    Special tokens are split out of the text first and each becomes exactly one id.
+    They must not reach SEGMENT_RE: a segment is not a token, and without a reserved
+    id the separator would be encoded character by character and merged like an
+    ordinary word.
 
     Raises ValueError if text contains a character outside the vocabulary. This
     tokenizer is character-based, so its vocabulary is closed: there is no fallback
     that could represent a character it does not hold. A byte-level BPE has no such
     failure mode, because every byte value is in the vocabulary by construction.
     """
-    encoder = {t: i for i, t in enumerate(vocab)}
+    n_chars, n_special = vocab_layout(vocab, merges)
+
+    # Ids are read off the layout, never looked up by string. A learned merge can
+    # coincide with a special token's spelling, and a string lookup would then
+    # silently return the special token's id for ordinary text.
+    merge_rules = [(a, b, n_chars + i) for i, (a, b) in enumerate(merges)]
+    specials = vocab[n_chars + len(merges):]
+    special_id = {t: n_chars + len(merges) + i for i, t in enumerate(specials)}
 
     # Longest first, so <|endoftext|> wins over any special that is a prefix of it.
-    specials = sorted((t for t in vocab if SPECIAL_TOKEN_RE.match(t)),
-                      key=len, reverse=True)
     if specials:
-        chunks = re.split('(' + '|'.join(re.escape(t) for t in specials) + ')', text)
+        pattern = '|'.join(re.escape(t) for t in sorted(specials, key=len, reverse=True))
+        chunks = re.split('(' + pattern + ')', text)
+        is_special = [False] * len(chunks)
+        for i in range(1, len(chunks), 2):     # re.split puts captures at odd indices
+            is_special[i] = True
     else:
-        chunks = [text]
-    special_set = set(specials)
+        chunks, is_special = [text], [False]
 
-    plain = ''.join(c for c in chunks if c not in special_set)
-    unknown = sorted(set(plain) - set(vocab))
+    plain = ''.join(c for c, sp in zip(chunks, is_special) if not sp)
+    unknown = sorted(set(plain) - set(vocab[:n_chars]))
     if unknown:
         shown = ''.join(unknown[:20])
         raise ValueError(
@@ -170,24 +216,24 @@ def bpe_encode(text, vocab, merges, verbose=None):
             f"no fallback for anything else. Lower min_count when cleaning, train on a "
             f"corpus that covers this text, or switch to a byte-level BPE."
         )
-
-    merge_rules = [(a, b, encoder[vocab[a] + vocab[b]]) for a, b in merges]
+    char_id = {c: i for i, c in enumerate(vocab[:n_chars])}
 
     # Identical segments encode identically, so encode each distinct one once.
-    chunk_segments = [None if c in special_set else SEGMENT_RE.findall(c) for c in chunks]
+    chunk_segments = [None if sp else SEGMENT_RE.findall(c)
+                      for c, sp in zip(chunks, is_special)]
     unique_segments = list(dict.fromkeys(
         s for segs in chunk_segments if segs is not None for s in segs))
     show_progress = len(unique_segments) > 1000 if verbose is None else verbose
 
     encoded_cache = {}
     for segment in tqdm(unique_segments, desc="BPE encoding", disable=not show_progress):
-        ids = [encoder[c] for c in segment]
+        ids = [char_id[c] for c in segment]
         encoded_cache[segment] = _apply_bpe_merges(ids, merge_rules)
 
     encoded = []
     for chunk, segments in zip(chunks, chunk_segments):
         if segments is None:
-            encoded.append(encoder[chunk])          # one id for the whole special token
+            encoded.append(special_id[chunk])       # one id for the whole special token
         else:
             for segment in segments:
                 encoded.extend(encoded_cache[segment])

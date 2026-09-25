@@ -28,7 +28,7 @@ import time
 import numpy as np
 
 from bpe import (SEGMENT_RE, END_OF_TEXT, clean_corpus, bpe_train, bpe_save,
-                 bpe_load, _apply_bpe_merges)
+                 bpe_load, vocab_layout, _apply_bpe_merges)
 
 CORPUS = 'data/TinyStoriesV2-GPT4-train.txt'
 TOKENIZER_PATH = 'checkpoints/bpe_tokenizer_train.pkl'
@@ -61,8 +61,19 @@ def build_tokenizer(docs, sample_frac):
     log(f"{len(docs):,} documents survive, {len(keep_chars)} characters kept", t)
 
     if os.path.exists(TOKENIZER_PATH):
-        log(f"{TOKENIZER_PATH} exists — reusing it")
         vocab, merges = bpe_load(TOKENIZER_PATH)
+        # Reuse only if it was built for this corpus and these settings. A tokenizer
+        # whose character inventory disagrees with the corpus would otherwise be
+        # accepted here and blow up minutes later, mid-encode.
+        on_disk = [tok for tok in vocab if len(tok) == 1]
+        if on_disk != keep_chars:
+            sys.exit(
+                f"{TOKENIZER_PATH} holds {len(on_disk)} characters but cleaning this "
+                f"corpus at min_count={MIN_CHAR_COUNT} gives {len(keep_chars)}. It was "
+                f"built from a different corpus or different settings. Delete it to "
+                f"rebuild.")
+        log(f"{TOKENIZER_PATH} matches this corpus — reusing it "
+            f"(--sample-frac is ignored; delete the file to relearn merges)")
         return docs, vocab, merges
 
     n = max(1, int(len(docs) * sample_frac))
@@ -81,9 +92,22 @@ def build_tokenizer(docs, sample_frac):
 
 def encode_corpus(docs, vocab, merges):
     """Three passes: unique segments, encode each once, assemble into uint16."""
-    encoder = {tok: i for i, tok in enumerate(vocab)}
-    eot_id = encoder[END_OF_TEXT]
-    merge_rules = [(a, b, encoder[vocab[a] + vocab[b]]) for a, b in merges]
+    # Ids come from the vocabulary layout, exactly as bpe_encode does it.
+    n_chars, n_special = vocab_layout(vocab, merges)
+    char_id = {c: i for i, c in enumerate(vocab[:n_chars])}
+    eot_id = n_chars + len(merges) + vocab[n_chars + len(merges):].index(END_OF_TEXT)
+    merge_rules = [(a, b, n_chars + i) for i, (a, b) in enumerate(merges)]
+
+    # Check the whole corpus before spending an hour on it: bpe_encode raises a
+    # useful ValueError, but the loops below would only raise a bare KeyError, and
+    # they would do it several minutes in.
+    unknown = set()
+    for doc in docs:
+        unknown |= set(doc) - char_id.keys()
+    if unknown:
+        sys.exit(f"{len(unknown)} character(s) in the corpus are not in the tokenizer "
+                 f"vocabulary: {''.join(sorted(unknown)[:20])!r}. The tokenizer and the "
+                 f"corpus were cleaned differently.")
 
     # Pass 1 - unique segments, and the total length so we can preallocate.
     t = time.time()
@@ -103,7 +127,7 @@ def encode_corpus(docs, vocab, merges):
     log(f"pass 2/3: applying {len(merge_rules)} merge rules to each unique segment …")
     cache = {}
     for i, seg in enumerate(seen):
-        cache[seg] = _apply_bpe_merges([encoder[c] for c in seg], merge_rules)
+        cache[seg] = _apply_bpe_merges([char_id[c] for c in seg], merge_rules)
         if (i + 1) % 100_000 == 0:
             log(f"  {i+1:,}/{len(seen):,} segments", t)
     del seen
