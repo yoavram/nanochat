@@ -146,7 +146,9 @@ two things checked hardest.
 
 ## Ground rules
 
-- One work package per branch, one PR each. Finding IDs go in commit messages.
+- **One branch for the whole revision: `revision2026`** (Yoav, 2026-09-25 — replaces
+  "one work package per branch", which stacked). Finding IDs go in commit messages,
+  and the commit is the unit that records a package, not the branch.
 - Notebooks: `Read` + `NotebookEdit` only. Never parse `.ipynb` with bash Python.
 - Cell indices in the review are 0-based positions in the *committed* notebook and shift on
   every insertion. Locate cells by the quoted source snippet, record the `id`, edit by `id`.
@@ -1212,20 +1214,17 @@ overwrites them and the diff looks like a legitimate result update.
 
 ---
 
-## Branch state (2026-09-24)
+## Branch state
 
-Neither revision branch has been merged to `main`, and they are **stacked**:
+**One branch for the whole revision: `revision2026`.** Yoav's decision 2026-09-25 —
+stacking a branch per work package meant each new branch carried the previous one's
+unmerged commits, and the PR-per-package rule could only be honoured by merging them in
+order. All revision work now continues on `revision2026`, which was created at `33c74c0`
+and therefore already contains WP4, WP5 and WP-T's decisions.
 
-```
-main
- └── sets-revision      WP4, 6 commits (c827495 → 6af3a06)
-      └── wp5-bpe-tokenizer   WP5 + WP-T, 7 commits (90dc41f → ba0d369)
-```
-
-So `wp5-bpe-tokenizer` carries WP4's commits too, and pushing or merging it brings both.
-The ground rules call for one PR per work package; that would mean merging `sets-revision`
-first, then `wp5-bpe-tokenizer` on top. **Yoav's call whether to keep them separate or land
-them together.**
+Superseded branches, kept for now and safe to delete whenever: `sets-revision` (local
+only, WP4), `wp5-bpe-tokenizer` (local and pushed, WP5 + WP-T). Their commits are all
+contained in `revision2026`, so nothing is lost by deleting them.
 
 ---
 
