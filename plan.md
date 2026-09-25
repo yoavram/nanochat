@@ -27,7 +27,8 @@ not only at the end of one.
 | E6 | QK-norm (8.1) | **Measure, then fix and retrain** if confirmed. |
 | — | Who runs the GPU jobs | **Claude, here**, on the 2× RTX A4000s. |
 | — | Seeds | ~~**Single seed per run.**~~ **Reversed 2026-09-21: three seeds (42, 43, 44) with error bars**, for the character experiment at least. Run W4 in `runs.md` re-ran identical code and got rnn-3L 2.133 then 2.066 — GPU/XLA nondeterminism compounded over the run — so a single number could not be told apart from a real effect. The published sweep is 6 models × 3 seeds; the noise band it establishes (**seed sd ≈ 0.008, so a gap under ~0.015 bpc is noise**) is now the instrument every claim in the three notebooks is read against. The single-seed rule still stands for the nanochat work packages (WP6–WP8), where a run costs hours rather than minutes. |
-| — | Checkpoint distribution | **Students do not get the `.pkl` files.** Deferred; do not add checkpoint URLs to `download_data.py` in this pass. Every notebook must therefore be runnable from scratch, or state plainly that it needs a checkpoint the student must produce. |
+| — | Checkpoint distribution | ~~Students do not get the `.pkl` files.~~ **Reversed by Yoav 2026-09-25: ship the `.pkl` files in a GitHub release.** Students are expected to have a GPU, and are *not* expected to train during class — the intended use is to load a shipped checkpoint in class and train off-class if they want to. This removes the constraint that every notebook be runnable from scratch in class-time, and it removes the argument for shrinking any model to fit a laptop. |
+| — | **Real model, not a toy** | **Yoav 2026-09-25.** The register is pedagogical, but the artifact should be a genuine nanoGPT at a genuine scale, not a scaled-down demonstration. Where "runnable in minutes" and "a real model" conflict, **the real model wins** and the shipped checkpoint closes the gap. This is what settled WP6's corpus question: full train split, 26.2 M parameters. |
 | — | Delivery date | **None set.** Size training runs for correctness, not for a deadline. |
 | — | **Register: teaching, not research** | **Yoav 2026-09-24.** These are workshop notebooks. The main line demonstrates *how a mechanism works*; statistical care stays, but compressed to a sentence, not made the climax. WP4's Discussion was rebuilt on this basis (mechanism first: *how does each architecture compute "do cards i and j share a rank?"*). **Applies to WP5–WP10.** Noise bands, reproducibility and seed variance belong in `runs.md`, not in notebook prose. |
 | — | **One story per notebook** | **Yoav 2026-09-24.** When a second, genuinely different lesson turns up inside a notebook, split it out rather than carry both. WP4 found a class-imbalance story inside a transformers notebook: the notebook keeps the *diagnosis* (it explains the transformer's own result) and the *fix* was handed to an FFN-only session in `yoavram/DataSciPy` — **issue #15**, filed with all numbers and code. Test to apply: does this lesson explain the notebook's own subject, or is it a different subject that happens to appear here? |
@@ -1253,8 +1254,11 @@ contained in `revision2026`, so nothing is lost by deleting them.
       unchanged. The retokenise it shares is the one the corpus change already forced.
 - [ ] **RMS QK-norm:** learnable per-head gain, or not? Changes the checkpoint schema.
 
-- [ ] **Checkpoint distribution** (B6) — deferred by Yoav. Revisit before delivery: without
-      it, `nanochat-sft` and `nanochat-grpo` cannot be run by a student.
+- [x] **Checkpoint distribution (B6) — resolved 2026-09-25: ship the `.pkl` files in a
+      GitHub release.** Students have GPUs and are not expected to train in class. Remaining
+      work, for WP6–WP8 and WP10: decide the release tag and add a loader (a `download_data.py`
+      flag, or a small `fetch_checkpoints` helper) so the notebooks can pull them, and make
+      every notebook that needs a checkpoint load it cleanly rather than assuming a prior run.
 - [ ] Verify the non-Claude model names in `minisweagent.ipynb` cell 27 at delivery (11.8)
 - [ ] **GRU layer-norm ablation (5.2)** — keep the broken post-gate LN as a two-cell
       ablation alongside the fix? The review rates it a good lesson. Yoav's call.
