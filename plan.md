@@ -855,7 +855,7 @@ storage is untouched. Both remain WP-T's, and WP-T's corpus question (which corp
 
 ---
 
-### WP-T — Token pipeline  ⬜ not started
+### WP-T — Token pipeline  ✅ done 2026-09-25 (`6e89ac3`, `1e9ab00`)
 **New package, inserted between WP5 and WP6.** Not in the review; added because four
 scattered changes all invalidate the same artifacts and must be decided and executed once.
 
@@ -898,10 +898,14 @@ Tasks:
       the same function on the pretraining corpus** — clean differently and the corpus holds
       characters the vocabulary has no id for.
       Policy: keep a character if it occurs ≥ `min_count` (100) **or** is printable ASCII;
-      drop any document using anything else, **never edit text**. On the train split that is
-      104 characters kept and **+124 merges for 389 documents of 2,717,495 (0.014%)**; on the
-      valid split the notebook actually runs, 79 kept and +9 merges for 109 of 27,630
-      (0.39%). Full numbers in `runs.md` T3/T4.
+      drop any document using anything else, **never edit text**. **Measured on the shipped
+      run:** train split 227 distinct → **104 kept**, **230 documents of 2,717,495 dropped
+      (0.0085%)**, **+123 merges** (796 → 919); valid split 88 → 79, 109 of 27,630 (0.39%),
+      +9 merges. Full numbers in `runs.md` T3/T4/T5.
+      ⚠ **Corrected 2026-09-25:** the earlier figures of *389 documents (0.014%)*, *228
+      characters* and *+124 merges* were wrong — 389 was measured for the frequency-only
+      rule rather than the frequency ∪ ASCII rule actually shipped, and 228 counted the raw
+      file including its `<|endoftext|>` literals.
 
 - [x] ~~Verify whether the shipped `checkpoints/bpe_tokenizer.pkl` was trained on the train
       or the valid split.~~ **Answered in WP5: the train split** (227 single-character
@@ -922,12 +926,17 @@ Tasks:
       `<`, `|` and `>` never occur in TinyStories. Cost measured: one merge, held-out
       compression 2.1065× → 2.1061×. **The retokenise is still required**, but by the corpus
       change, not by this row
-- [ ] **Store tokens as `uint16`, not `int64`.** Today cell 40 does `jnp.array(train_data)`,
+- [x] **Done 2026-09-25 — `train_tokens.npy` is `uint16`, 2.08 GB against the old file's
+      8.5 GB.** Original note: **Store tokens as `uint16`, not `int64`.** Today cell 40 does `jnp.array(train_data)`,
       putting 7.65 GB of train tokens plus 0.85 GB of val on a 16 GB card — around 12–13 GB
       total with params, Adam state and materialised attention weights, against XLA's
       default 75% preallocation of 12.3 GB. A retrain is one batch-size bump from OOM.
       Two-line change, 8.50 GB → 2.1 GB
-- [ ] Retokenise **once**, producing exactly one new `train_tokens.npy` under `checkpoints/`.
+- [x] **Done 2026-09-25 in 15.9 min** (budgeted 1–3 h) by `build_train_artifacts.py`:
+      `checkpoints/bpe_tokenizer_train.pkl` (104 + 919 + 1) and `checkpoints/train_tokens.npy`
+      (1,039,345,143 tokens, uint16, 2.08 GB). Verified: separator count equals the document
+      count exactly, max id 1023, decodes cleanly across boundaries. Original note:
+      Retokenise **once**, producing exactly one new `train_tokens.npy` under `checkpoints/`.
       Budget 2.23 GB download + 1–3 h of pure-Python `bpe_encode` if the train split is used
 - [x] **Disk handled 2026-09-24.** `checkpoints/train_tokens.npy` (8.5 GB, `int64`,
       `(4132598, 257)`) **deleted** — it was tokenised against the 227-character train-split

@@ -765,3 +765,58 @@ left single quote only opens quotations, which these stories rarely use.
 **Third prose-ahead-of-measurement correction in this package.** `bpe_encode`'s error
 message also said the characters "never occurred in the training corpus", false for
 anything cleaning removed; it now names both causes.
+
+### T5 — the shipped train-split artifacts (WP-T) · 2026-09-25 · workstation CPU
+
+`build_train_artifacts.py`, **15.9 min total** against the 1–3 h budgeted.
+
+| stage | time |
+|---|---|
+| read + split 2.23 GB into documents | 14 s |
+| `clean_corpus` over 2,717,495 documents | 83 s |
+| learn 919 merges on 10% of documents (218.6 M chars) | 159 s |
+| collect 238,566 unique segments | 109 s |
+| apply 919 merge rules to each unique segment | 95 s |
+| measure + assemble 1.04 B tokens | 496 s |
+
+**Artifacts** (both gitignored; to be shipped in a GitHub release per B6):
+
+| | |
+|---|---|
+| `checkpoints/bpe_tokenizer_train.pkl` | **104 characters + 919 merges + 1 special** = 1024 |
+| `checkpoints/train_tokens.npy` | **1,039,345,143 tokens**, `uint16`, **2.08 GB** |
+| compression | **2.102 characters/token** |
+| cleaning | 227 distinct → 104 kept (123 dropped, 546 occurrences); **230 of 2,717,495 documents dropped (0.0085%)**, 0.0098% of text |
+
+Verified: separator count **exactly** 2,717,265 = the surviving document count; max id
+1023; decodes cleanly across document boundaries. The `uint16` decision delivered 4×:
+**2.08 GB against the old `int64` file's 8.5 GB**.
+
+### Three published numbers were wrong, and the run caught them
+
+| claimed | actual | why |
+|---|---|---|
+| 389 documents dropped (0.014%) | **230 (0.0085%)** | 389 was measured for the frequency-only rule; the shipped policy is frequency **∪ printable ASCII**, which rescues 14 more characters and so drops fewer documents |
+| 228 distinct characters | **227** | 228 counted the raw file, which contains the `<|endoftext|>` literals |
+| +124 merges | **+123** | follows from 227 |
+
+All three were in the notebook's teaching table. Corrected there, in `plan.md`, and here.
+
+### The sampling trap, measured on the shipped pipeline
+
+Supersedes T2's raw-file probe (which used a character-count prefix of the uncleaned
+file). On the **cleaned** corpus, sampling by document:
+
+| sample | kept characters seen | missed |
+|---|---|---|
+| 1% | 87/104 | 17 |
+| 5% | 89/104 | 15 |
+| **10%** (shipped) | **95/104** | **9** — `% < = > @ { \| } ~` |
+| 25% | 101/104 | 3 — `{ \| }` |
+
+**Every missed character is printable ASCII.** So the sampling trap and the
+always-keep-ASCII clause are the same story: what a sample misses is not a random
+subset but the rare tail, and for a children's-story corpus the rare tail is precisely
+the punctuation a *person* would later type. Without `chars=keep_chars` the shipped
+tokenizer would refuse `50% off`, `x <= y`, an email address and a dict literal — and
+only at the moment someone tried. This is now the notebook's sampling section.
