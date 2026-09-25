@@ -1175,6 +1175,35 @@ course — sampling (temperature / top-k / top-p) and JAX shape stability.
 
 ---
 
+### WP-R — Checkpoint release and fetcher  ⬜ deferred, do near delivery
+**Yoav 2026-09-25: mark it, do it later.** Created because B6 reversed — the `.pkl` files
+now ship in a GitHub release — and that touches four notebooks, so doing it once here beats
+doing it four times.
+
+Deliberately deferred: the checkpoints it would publish do not exist in their final form
+yet. WP6 retrains nanochat under parameter-free QK-norm and the new train-split tokenizer,
+and WP7/WP8 regenerate SFT and GRPO on top of that. **Cutting a release before those land
+would publish artifacts that are wrong.** Do this once WP6–WP8 have settled.
+
+- [ ] Decide the release tag and what goes in it. Current candidates, ~730 MB total:
+      `bpe_tokenizer_train.pkl`, `nanochat_checkpoint.pkl`, `nanochat_sft_checkpoint.pkl`,
+      `nanochat_grpo_checkpoint.pkl`. **`train_tokens.npy` is 2.08 GB — decide whether it
+      ships or is rebuilt by `build_train_artifacts.py`** (16 min, needs the 2.23 GB
+      download; rebuilding is probably the better trade)
+- [ ] A fetcher: a `download_data.py --checkpoints` flag or a small `fetch_checkpoints`
+      helper. One implementation, imported by every notebook that needs it
+- [ ] Every notebook that needs a checkpoint **fetches it rather than assuming a previous
+      notebook produced it**. This is the actual behaviour change, and it affects
+      `nanochat.ipynb` (resume/load), `nanochat-sft.ipynb`, `nanochat-grpo.ipynb` and
+      `nanochat-chat.ipynb`
+- [ ] State in each notebook which artifacts it needs and where they come from, so a
+      student who has not run the previous notebook is not left guessing
+- [ ] Checksums, so a truncated download fails loudly rather than unpickling into nonsense
+- [ ] Revisit `.gitignore`: the checkpoints stay untracked, but the release URLs and tag
+      should be recorded somewhere version-controlled
+
+---
+
 ### WP9 — `minisweagent.ipynb`  ⬜ not started
 Unblocked. Least work needed; the risks are operational.
 
@@ -1264,10 +1293,8 @@ contained in `revision2026`, so nothing is lost by deleting them.
 - [ ] **RMS QK-norm:** learnable per-head gain, or not? Changes the checkpoint schema.
 
 - [x] **Checkpoint distribution (B6) — resolved 2026-09-25: ship the `.pkl` files in a
-      GitHub release.** Students have GPUs and are not expected to train in class. Remaining
-      work, for WP6–WP8 and WP10: decide the release tag and add a loader (a `download_data.py`
-      flag, or a small `fetch_checkpoints` helper) so the notebooks can pull them, and make
-      every notebook that needs a checkpoint load it cleanly rather than assuming a prior run.
+      GitHub release.** Students have GPUs and are not expected to train in class.
+      **The release itself is deferred — see WP-R below.**
 - [ ] Verify the non-Claude model names in `minisweagent.ipynb` cell 27 at delivery (11.8)
 - [ ] **GRU layer-norm ablation (5.2)** — keep the broken post-gate LN as a two-cell
       ablation alongside the fix? The review rates it a good lesson. Yoav's call.
@@ -1334,6 +1361,7 @@ does not hold.
 
 | Date | WP | What happened |
 |------|----|---------------|
+| 2026-09-25 | WP5/WP-T/WP-R | **Single branch `revision2026`; WP-T delivered; the notebook now samples.** Branch consolidation (Yoav): stacking a branch per package meant each carried the previous one's unmerged commits — `revision2026` cut at `33c74c0` already contains WP4/WP5, and `sets-revision`/`wp5-bpe-tokenizer` are superseded. **WP-T done in 15.9 min** (budgeted 1–3 h): `bpe_tokenizer_train.pkl` (104 chars + 919 merges + 1 special) and `train_tokens.npy` (1,039,345,143 tokens, **uint16, 2.08 GB** against the old int64 file's 8.5 GB), verified by separator count, max id and boundary decoding. **Three published numbers were wrong and the run caught them** — 230 documents dropped (0.0085%) not 389 (0.014%), 227 distinct characters not 228, +123 merges not +124; the 389 had been measured for the frequency-only rule rather than the frequency ∪ ASCII rule shipped. **The notebook now samples** (`SAMPLE_FRAC = 0.10`), closing a preach-vs-practice gap Yoav caught: the sampling section explained a mechanism the code never exercised, which also left `chars=keep_chars` inert. A new cell measures character coverage by sample size (10% sees 72/79, missing `/0678=` and a backtick), and the fraction was chosen by measurement — 10% is within **0.08%** of full-corpus compression for a third of the time. The sampling trap and the always-keep-ASCII clause turn out to defend the same characters. Yoav's decisions recorded: **B6 reversed** (ship `.pkl` in a release; GPUs assumed, no in-class training), **real model not a toy**, **parameter-free RMS QK-norm** (verified against nanochat), **full train split at 26.2 M**. **WP-R created and deferred** — a release cut now would publish checkpoints WP6–WP8 are about to invalidate. Numbers in `runs.md` T5. |
 | 2026-09-24 | WP5 | **Corpus cleaning built into the notebook and emitted into `bpe.py`** (`6d8ea54`, `9d735c7`). Yoav's steer: **this is teaching material, not a pipeline step** — register is a workshop notebook, so the cleanup is derived and explained rather than hidden in a WP-T script. New Step 4 shows why characters are the *floor* of the vocabulary (`merges = vocab_size − characters − specials`, so a character occurring once costs what `e` costs). `clean_corpus` drops whole documents rather than editing text — an edit you cannot detect beats a loss you can is the same principle as 7.10's raise — and returns the inventory for `bpe_train(chars=...)`. **WP6 must call the identical function** on the pretraining corpus. Committed tokenizer: **79 characters + 944 merges + 1 special**, 109 of 27,630 documents dropped (0.39%), held-out **2.11×**. The teaching payoff is the two-corpus contrast: valid **+9 merges for 0.39%** of documents, train **+124 for 0.014%** — 100× the text gives 2.6× the characters, nearly all junk, so cleaning pays *more* on bigger corpora while costing *less*. **Third prose-ahead-of-measurement correction in this package**: cleaning drops `é` (4 occurrences) and `ñ` (1), so accented Spanish now **refuses** where it encoded before — the OOV section was rebuilt around it, and the lesson improved (cleaning replaced an *accidental* boundary with a *stated* one; both arbitrary, only one writable down and changeable on purpose). `bpe_encode`'s error text also wrongly said such characters "never occurred in the training corpus" and now names both causes. Separator cost re-measured under the cleaned vocabulary: 2.1089× → **2.1088×**. Numbers in `runs.md` T4. |
 | 2026-09-24 | WP5/WP-T | **`<|endoftext|>` added, and the corpus policy decided** (`537c83b`). Yoav: **BPE trains on ~10% of the train split, nanochat pretrains on the full train split** — the valid split is ruled out for pretraining (~17 epochs = memorisation). That plan needs one fix, now shipped: `bpe_train(chars=...)` overrides the character inventory, so merges are learned from the sample while the character set comes from a full pass. **Measured, and the reason it is not optional:** the full 2.23 GB train split has **228 distinct characters**, a 10% sample sees **158**, and the **70** it misses cover **296 occurrences out of 2.23 billion** — negligible by frequency, fatal under raise-on-unknown. Merge statistics converge on a sample; character inventories cannot. **Two of the plan's own premises about 8.11 were wrong**: the vocabulary does *not* grow to 1025 (the token is reserved out of the 1024 budget — 88 chars + 935 merges + 1 special at id 1023, so embedding/head shapes are unchanged and 8.11 forces no retrain by itself), and the `\S+|\s+` segmenter does *not* shred the literal (`<|endoftext|>` has no whitespace, so `\S+` takes all of it — the demo cell prints this). The real argument is that a segment is not a token. Cost of the separator: one merge, 2.1065× → 2.1061×. **Left open for WP-T:** 228 characters is 22% of the vocabulary and 137 of them occur <100 times each, so cleaning the corpus instead would buy back ~140 merges — worth measuring before paying for the 1–3 h encode. Train split now on disk; disk at **97%, 34 GB free**. |
 | 2026-09-24 | WP5 | **`bpe-tokenizer.ipynb` rebuilt and `bpe.py` generated from it** (branch `wp5-bpe-tokenizer`, `90dc41f` → `320b33e`). Closes 7.1, 7.2, 7.4–7.7, 7.10, A3, A4. **The emission mechanism the plan called undecided is now decided and tested end to end under `nbconvert --execute`**: functions are defined normally, one cell emits them via `inspect.getsource` over the live bindings, so it is idempotent and order-independent where `%%writefile -a` would duplicate or scramble — reuse for `nanochat_model.py` in WP6. Yoav's calls: **raise on unknown characters** (no `<unk>`, so no forced vocab change from this package), **keep generated modules tracked**, **no commit trailers**, review file stays untracked. Default corpus is now the 22.5 MB valid split; compression is measured on 500 held-out stories (**2.11×**, 88 characters + 936 merges, 51 s) and the vocab sweep runs on a fixed 5 MB subsample (49 s, was four full-corpus retrainings). New section derives why the course reports **bits per character** — loss per token is not comparable across tokenizers because the tokenizer picks the denominator — with the corpus caveat attached. **Answered a WP-T question in passing: the shipped tokenizer was trained on the train split** (227 single-char tokens vs 88, **0/1024 ids shared**), so the corpus change forces the retokenise and every existing nanochat/SFT/GRPO checkpoint is now keyed to the wrong tokenizer until WP6–WP8 retrain. Old file preserved as `bpe_tokenizer_trainsplit.pkl`. **Prose falsified by its own run, again**: a draft claimed accented Spanish would be refused; TinyStories contains `é`/`ñ`, so Spanish encodes and *German* refuses — corrected, and the accident-of-the-corpus point is now the section's lesson and Exercise 4. The raise also immediately caught a 2 MB sweep subsample missing `4` and `‘` that the old silent id-0 fallback would have hidden. Figures pinned to `dpi=72` (rcParams are overridden by the inline backend, so dpi must be passed per figure): PNG 88.8k → 57.1k chars, and **the executed notebook was verified to still open for editing** — the WP-N criterion. Numbers in `runs.md` T1. |
