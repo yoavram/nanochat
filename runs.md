@@ -617,6 +617,12 @@ were mis-decoded somewhere upstream of TinyStories. Three of the 88 slots are mo
 
 ### T2 — `<|endoftext|>` and the corpus-sampling measurement (WP5/WP-T) · 2026-09-24
 
+> ⚠ **Partly superseded.** The character census here is of the *raw file* (228) rather
+> than document text (227), the sampling probe used a character-count prefix rather than a
+> document sample (see **T5** for the shipped measurement), and the claim that `<`, `|`
+> and `>` "never occur in TinyStories" holds only for the **validation** split — all three
+> occur in the training split and are in its 104-character kept set.
+
 **Question:** does Yoav's plan — train BPE on 10% of the train split, pretrain nanochat
 on all of it — work under the raise-on-unknown encoder?
 
@@ -665,6 +671,13 @@ separator is encoded character by character and merged like any word, and in thi
 vocabulary it raises outright, because `<`, `|` and `>` never occur in TinyStories.
 
 ### T3 — how much does cleaning the corpus buy? (WP-T) · 2026-09-24
+
+> ⚠ **Superseded 2026-09-25. Every number in this section is pre-correction.** It was
+> computed on the *raw file* (228 distinct characters, including the `<|endoftext|>`
+> literals) and for the **frequency-only** keep rule, not the frequency ∪ printable-ASCII
+> rule that shipped. Corrected values: 227 distinct characters in document text, 104 kept,
+> **230 documents dropped (0.0085%)**, **+123 merges**, and the frequency-only keep is
+> **88** characters, not the 91 below. See **T5**. Kept for the shape of the argument only.
 
 **Question:** carrying all 228 characters of the train split spends 22% of a 1024-token
 vocabulary. What does trimming the tail cost, and what does it return?
@@ -728,12 +741,14 @@ differently and the corpus holds characters the vocabulary has no id for.
 | text | 22,067,904 → 21,972,571 chars (0.4320% removed) |
 | vocabulary | **79 characters + 944 merges + 1 special** = 1024 |
 | dropped characters | `–‘—…é\x92\x93\x94ñ` |
-| held-out compression | **2.11×** (405,879 chars → 192,470 tokens) |
+| held-out compression | **2.11×** (405,879 chars → 192,470 tokens) — *superseded: this is the full-corpus-merge figure; since 2026-09-25 the notebook learns merges from a 10% sample and ships 192,624 tokens / 2.1071×* |
 | train time | 50 s |
 
 **Separator cost, re-measured under the cleaned vocabulary:** 2.1089× with 945 merges
 and no separator, **2.1088×** with 944 merges and `<|endoftext|>`. Supersedes the
-2.1065×/2.1061× pair in T2, which was measured before cleaning.
+2.1065×/2.1061× pair in T2, which was measured before cleaning. **Itself superseded
+2026-09-25** by the sampling change: the shipped pair is 192,621 / 192,624 tokens,
+both 2.1071×.
 
 ### The teaching contrast: cleaning pays more on bigger corpora
 
@@ -741,10 +756,12 @@ and no separator, **2.1088×** with 944 merges and `<|endoftext|>`. Supersedes t
 |---|---|---|
 | size | 22.5 MB | 2.23 GB |
 | documents | 27,630 | 2,717,495 |
-| distinct characters | 88 | 228 |
+| distinct characters | 88 | **227** |
 | kept | 79 | 104 |
-| documents dropped | 109 (**0.39%**) | 389 (**0.014%**) |
-| merges freed | **+9** | **+124** |
+| documents dropped | 109 (**0.39%**) | **230 (0.0085%)** |
+| merges freed | **+9** | **+123** |
+
+*(train column corrected 2026-09-25 from 228 / 389 (0.014%) / +124 — see T5.)*
 
 100× the text gives 2.6× the characters and almost all of the excess is junk, so the
 benefit of cleaning **rises** with corpus size while its cost in documents **falls**.
@@ -796,11 +813,11 @@ Verified: separator count **exactly** 2,717,265 = the surviving document count; 
 
 | claimed | actual | why |
 |---|---|---|
-| 389 documents dropped (0.014%) | **230 (0.0085%)** | 389 was measured for the frequency-only rule; the shipped policy is frequency **∪ printable ASCII**, which rescues 14 more characters and so drops fewer documents |
+| 389 documents dropped (0.014%) | **230 (0.0085%)** | 389 was measured for the frequency-only rule; the shipped policy is frequency **∪ printable ASCII**, which rescues 16 more characters (`\t # % & + < = > @ [ \ ] { | } ~`) and so drops fewer documents |
 | 228 distinct characters | **227** | 228 counted the raw file, which contains the `<|endoftext|>` literals |
 | +124 merges | **+123** | follows from 227 |
 
-All three were in the notebook's teaching table. Corrected there, in `plan.md`, and here.
+All three were in the notebook's teaching table. Corrected there and in `plan.md` on the day; **the copies in T2, T3 and T4 were missed and were only corrected on 2026-09-25**, after a review pointed out that this very sentence was false about the repo it describes.
 
 ### The sampling trap, measured on the shipped pipeline
 
