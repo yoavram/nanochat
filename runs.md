@@ -1040,3 +1040,76 @@ of 0.78–1.28× still forces an entropy ratio of ~0.997, which is what the A/B 
 believable direction** (the bpc inflation, and this). Neither broke anything. That is the
 class of error this project keeps producing, and the only thing that catches it is a
 reviewer told to check arithmetic against the definition rather than against the narrative.
+
+## N5 — does the reference's fixed `1.2` matter? · 2026-09-26 · **the answer is a better lesson than the answer**
+
+**Question.** The nanochat reference applies RMS norm to Q and K and *then* multiplies both
+by a hard-coded `1.2`. WP6 shipped without it, on the reasoning that it "only rescales an
+already-healthy logit range". Yoav asked for that reasoning to be tested rather than
+asserted.
+
+**It is not only a rescale of the ceiling.** Measured at initialisation, before any training:
+attention-logit std **1.0022 without, 1.4431 with** — a ratio of 1.4399, i.e. exactly the
+1.2² = 1.44 the algebra predicts. So it is a fixed temperature on the attention softmax, and
+the original justification was wrong about the mechanism even though it may be right about
+the outcome.
+
+**Design.** As N1: same script, one line different, everything else identical. Three seeds
+(0, 1, 2) per variant this time — N1's single-seed rule was justified by runs costing hours,
+and these cost nine minutes, so the exemption did not apply. `l2` was left at one seed
+because its gap is ~200× the wobble. Six runs, ~30 min on two A4000s.
+
+| variant | n | val @ 4,000 | sd | entropy ratio | init logit std |
+|---|---|---|---|---|---|
+| `l2` | 1 | 1.5027 | — | 0.9995 | — |
+| `rms` | 3 | 1.0738 | 0.0047 | 0.666 | 1.0022 |
+| `rms12` | 3 | **1.0678** | **0.0008** | **0.530** | 1.4431 |
+
+**Δ(rms → rms12) = 0.0060 nats, Welch t = 2.19, df = 2.1, p = 0.15.**
+
+**The result is a genuine tension, and it is now the notebook's teaching material.**
+`openai/parameter-golf` accepts a new record only if it beats the old by **≥ 0.005 nats**
+*and* the logs show that at **p < 0.01**. Our gap is 0.0060 — it **clears the magnitude bar
+and fails the evidence bar by more than an order of magnitude**. The two halves of one
+published standard disagree about the same measurement. Nothing here resolves that, and the
+notebook deliberately does not try to.
+
+**The accidental finding is the most useful one.** Between N1's `rms` run and this one, the
+only edit to the script was multiplying q and k by a constant equal to `1.0` —
+*mathematically a no-op*. The two runs finished at **1.0707 and 1.0686, 0.0021 apart**, with
+a step-by-step wobble of ±0.003 from step 200 onward. A null code change moved the answer by
+a third of the effect being measured. That is the noise floor, and it was free.
+
+**Also worth noting, and unexplained:** `rms12`'s seed sd is 0.0008 against `rms`'s 0.0047 —
+roughly 6× more stable across seeds. Three runs is far too few to call that real; it is
+recorded here because it was measured, not because it is claimed.
+
+**Decision: unchanged — WP6 ships without the 1.2**, and the notebook's prose no longer
+claims it is a mere rescale. The evidence does not meet the standard the notebook itself
+now cites, and reversing would cost a 2.1 h retrain plus WP7/WP8 checkpoint regeneration.
+Reversible if Yoav prefers the reference exactly.
+
+### The notebook now carries a second story (Yoav, 2026-09-26)
+
+Overriding "one story per notebook" for `nanochat.ipynb` only: an *algorithmic* story (how a
+GPT works and is trained) and a *data-science* story (many hyperparameters, unexpected
+sensitivity, so how do you decide?). Delivered as a **demonstration that opens a discussion**
+— the questions are posed and the conclusions deliberately left unwritten, because they are
+the classroom's. Two new cells after the bits-per-character section, reading
+`checkpoints/qknorm_ab.json`, which commits all six runs.
+
+**Three mechanical notes on how it was landed**, each of which cost something:
+
+1. **The demonstration's code cell was executed on its own, not as part of the training run**,
+   and carries `execution_count: null` to make that visible. It is real output from that exact
+   source against the committed JSON — it reads a file and prints, so it depends on no kernel
+   state. Re-executing the whole notebook to renumber it would cost 2.1 h *and* shift every
+   published number by ~0.002 through the GPU nondeterminism this very section is about.
+2. **Source size was the binding constraint.** The section was paid for by trimming the
+   SFT/GRPO preview (which duplicated the two notebooks that own that material, 3,023 → 1,147
+   chars) and then by tightening the new prose repeatedly. Final source: **24,994 tokens, 6
+   under the 25,000 limit.** The next edit to this notebook must either cut source first or
+   go through `nbformat`.
+3. **All edits went through the `nbformat` API**, since at 539 KB the notebook is far past
+   what `Read` will open. Every pass asserted the untouched cells' source and outputs
+   byte-identical afterwards.

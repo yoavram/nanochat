@@ -31,6 +31,7 @@ not only at the end of one.
 | — | **Real model, not a toy** | **Yoav 2026-09-25.** The register is pedagogical, but the artifact should be a genuine nanoGPT at a genuine scale, not a scaled-down demonstration. Where "runnable in minutes" and "a real model" conflict, **the real model wins** and the shipped checkpoint closes the gap. This is what settled WP6's corpus question: full train split, 26.2 M parameters. |
 | — | Delivery date | **None set.** Size training runs for correctness, not for a deadline. |
 | — | **Register: teaching, not research** | **Yoav 2026-09-24.** These are workshop notebooks. The main line demonstrates *how a mechanism works*; statistical care stays, but compressed to a sentence, not made the climax. WP4's Discussion was rebuilt on this basis (mechanism first: *how does each architecture compute "do cards i and j share a rank?"*). **Applies to WP5–WP10.** Noise bands, reproducibility and seed variance belong in `runs.md`, not in notebook prose. |
+| — | **Two stories in `nanochat.ipynb`, deliberately** | **Yoav 2026-09-26, overriding "one story per notebook" for this notebook only.** It carries an *algorithmic* story (how a GPT works and is trained) and a *data-science* story (a GPT has many hyperparameters, its sensitivity to them is unexpected, so how do you decide?). The second is not a foreign subject that happens to appear here — it is a property of the object being taught, and the QK-norm work produced the material for it. Delivery is a **demonstration that opens a discussion, not an exercise**: present the measurements, frame the question, and **do not write the discussion** — the conclusions are the classroom's. Elaborations: `karpathy/autoresearch` (an agent running 5-minute nanochat experiments and keeping or discarding on `val_bpb`) and `openai/parameter-golf` (16 MB budget, scored on tokenizer-agnostic bits-per-byte, and a record must beat SOTA by 0.005 nats at p<0.01 — usually 3 runs). Both verified against their primary sources 2026-09-26; both postdate the assistant's knowledge and would have been fabricated if guessed. |
 | — | **One story per notebook** | **Yoav 2026-09-24.** When a second, genuinely different lesson turns up inside a notebook, split it out rather than carry both. WP4 found a class-imbalance story inside a transformers notebook: the notebook keeps the *diagnosis* (it explains the transformer's own result) and the *fix* was handed to an FFN-only session in `yoavram/DataSciPy` — **issue #15**, filed with all numbers and code. Test to apply: does this lesson explain the notebook's own subject, or is it a different subject that happens to appear here? |
 | — | **Review adversarially before closing a package** | **Established 2026-09-25/26.** WP5 was committed and pushed, then reviewed by two subagents — one on code correctness, one fact-checking every number against the notebook's own outputs. They found **two real bugs and six wrong prose claims** in work I had already declared done. Both reviews also *confirmed* the two claims that mattered most, which is the other half of the value: `_apply_bpe_merges` was proved equivalent to textbook BPE, and the pipeline encoder byte-identical to `bpe_encode`. **Do this before saying a package is finished, not after.** Split the reviewers by dimension (code vs. claims) and tell each to report what it checked and found *correct*, so coverage is visible. |
 | — | **A correction is not landed until you have grepped for it** | **Established 2026-09-26, the hard way.** On 2026-09-24 I corrected three numbers in the notebook and wrote in `runs.md` T5 that they were fixed "there, in `plan.md`, and here" — while T4's table two sections above still carried the old values, and T3 was entirely pre-correction with no warning. A correction note that was **false about its own document**. Rule: after changing a published number, `grep` the whole repo for the old one, and give superseded sections a banner rather than leaving them to be read as current. |
@@ -965,7 +966,7 @@ Tasks:
 
 ---
 
-### WP6 — `nanochat.ipynb`  ✅ done 2026-09-26 — **val 0.8126, 0.555 bpc; both reviews done**
+### WP6 — `nanochat.ipynb`  ✅ done 2026-09-26 — **val 0.8126, 0.555 bpc; reviewed; second story added**
 
 **Depends on WP5** (it imports the `bpe.py` that `bpe-tokenizer.ipynb` generates), and on
 WP-T, which is **done**.
@@ -975,6 +976,24 @@ bugs fixed, and the notebook **retrained and re-executed end to end with no erro
 **best val 0.8126 nats/token** at step 63,000 of 64,000, 126.8 min on one A4000, held-out
 **0.555 bpc** against a 3.292 character-bigram baseline, attention entropy ratio **0.687**
 (against unit-L2's 0.999). The old model was 1.069. `runs.md` N1–N3 hold the numbers.
+**A second story was added after the reviews (Yoav 2026-09-26).** `nanochat.ipynb` now
+carries a data-science story alongside the algorithmic one — see the decisions table. It is a
+*demonstration that opens a discussion*: two cells after the bits-per-character section
+present three QK-norm variants measured under identical conditions, pose five questions, and
+**write no conclusions**. Backed by `checkpoints/qknorm_ab.json` (six committed runs, N5) and
+pointing at `karpathy/autoresearch` and `openai/parameter-golf`.
+
+The experiment behind it (N5) answered the open `1.2` question and produced something better
+than an answer: Δ = 0.0060 nats at p = 0.15, which **clears parameter-golf's 0.005-nat
+magnitude bar and fails its p<0.01 evidence bar** — one standard disagreeing with itself. And
+a mathematically null code change (× 1.0) moved the result 0.0021, a third of the effect.
+**Decision: still ship without the 1.2**, but the prose no longer claims it is a mere rescale
+— measured at init, it multiplies the attention-logit std by 1.44 exactly as the algebra says.
+
+**Source size is now the binding constraint: 24,994 tokens, 6 under the limit.** Paid for by
+trimming the SFT/GRPO preview (duplicated the notebooks that own it). Any further edit must
+cut source first or go through `nbformat`.
+
 **Both review dimensions are done** — N3 (code, 7 bugs) and N4 (numbers, 9 wrong claims).
 N4's fixes were markdown-only and went in through the `nbformat` API, because at 539 KB the
 notebook is past what `Read` opens and `NotebookEdit` therefore cannot reach it; every code
