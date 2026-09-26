@@ -31,6 +31,7 @@ not only at the end of one.
 | — | **Real model, not a toy** | **Yoav 2026-09-25.** The register is pedagogical, but the artifact should be a genuine nanoGPT at a genuine scale, not a scaled-down demonstration. Where "runnable in minutes" and "a real model" conflict, **the real model wins** and the shipped checkpoint closes the gap. This is what settled WP6's corpus question: full train split, 26.2 M parameters. |
 | — | Delivery date | **None set.** Size training runs for correctness, not for a deadline. |
 | — | **Register: teaching, not research** | **Yoav 2026-09-24.** These are workshop notebooks. The main line demonstrates *how a mechanism works*; statistical care stays, but compressed to a sentence, not made the climax. WP4's Discussion was rebuilt on this basis (mechanism first: *how does each architecture compute "do cards i and j share a rank?"*). **Applies to WP5–WP10.** Noise bands, reproducibility and seed variance belong in `runs.md`, not in notebook prose. |
+| — | **The reference's fixed `1.2`: closed, not adopted** | **2026-09-27.** `nanochat.ipynb` ships RMS QK-norm *without* the reference's `q, k *= 1.2`. Not an evidence question any more: N5 measured Δ = 0.0060 nats/token = **0.0029 per character on parameter-golf's own axis, at p = 0.15**, failing both halves of the standard the notebook itself cites. The one argument for it — `rms12`'s seed sd of 0.0008 against `rms`'s 0.0047 — rests on three runs and is not actionable. Reversing costs a 2.1 h retrain, WP7/WP8 checkpoint regeneration, and every published number. The deciding principle is pedagogical, not empirical: **this notebook ships what it can justify by measurement, not what the reference happens to do**, and adopting a constant it had just shown it cannot justify would undercut its own new section. The constant is explained in the prose and `rms12` appears as one of the three measured variants, so nothing is hidden. Reopen only if exact fidelity to `karpathy/nanochat` becomes a requirement. |
 | — | **Two stories in `nanochat.ipynb`, deliberately** | **Yoav 2026-09-26, overriding "one story per notebook" for this notebook only.** It carries an *algorithmic* story (how a GPT works and is trained) and a *data-science* story (a GPT has many hyperparameters, its sensitivity to them is unexpected, so how do you decide?). The second is not a foreign subject that happens to appear here — it is a property of the object being taught, and the QK-norm work produced the material for it. Delivery is a **demonstration that opens a discussion, not an exercise**: present the measurements, frame the question, and **do not write the discussion** — the conclusions are the classroom's. Elaborations: `karpathy/autoresearch` (an agent running 5-minute nanochat experiments and keeping or discarding on `val_bpb`) and `openai/parameter-golf` (16 MB budget, scored on tokenizer-agnostic bits-per-byte, and a record must beat SOTA by 0.005 nats at p<0.01 — usually 3 runs). Both verified against their primary sources 2026-09-26; both postdate the assistant's knowledge and would have been fabricated if guessed. |
 | — | **One story per notebook** | **Yoav 2026-09-24.** When a second, genuinely different lesson turns up inside a notebook, split it out rather than carry both. WP4 found a class-imbalance story inside a transformers notebook: the notebook keeps the *diagnosis* (it explains the transformer's own result) and the *fix* was handed to an FFN-only session in `yoavram/DataSciPy` — **issue #15**, filed with all numbers and code. Test to apply: does this lesson explain the notebook's own subject, or is it a different subject that happens to appear here? |
 | — | **Review adversarially before closing a package** | **Established 2026-09-25/26.** WP5 was committed and pushed, then reviewed by two subagents — one on code correctness, one fact-checking every number against the notebook's own outputs. They found **two real bugs and six wrong prose claims** in work I had already declared done. Both reviews also *confirmed* the two claims that mattered most, which is the other half of the value: `_apply_bpe_merges` was proved equivalent to textbook BPE, and the pipeline encoder byte-identical to `bpe_encode`. **Do this before saying a package is finished, not after.** Split the reviewers by dimension (code vs. claims) and tell each to report what it checked and found *correct*, so coverage is visible. |
@@ -967,7 +968,7 @@ Tasks:
 
 ---
 
-### WP6 — `nanochat.ipynb`  ✅ done 2026-09-26 — **val 0.8126, 0.555 bpc; three reviews; second story added**
+### WP6 — `nanochat.ipynb`  ✅ **done and pushed 2026-09-27** — val 0.8126, 0.555 bpc; three reviews; second story added
 
 **Depends on WP5** (it imports the `bpe.py` that `bpe-tokenizer.ipynb` generates), and on
 WP-T, which is **done**.
@@ -1108,8 +1109,28 @@ tokens of source — under the 25k limit but with little headroom), commit, and 
 **second** review dimension — every number in the committed outputs checked against the
 notebook's own claims — before declaring the package done.
 
-### WP7 — `nanochat-sft.ipynb`  ⬜ not started
-Depends on WP6 (and on its retrain, if 8.1 is confirmed). Task decided: **TinyStories-Instruct**.
+### WP7 — `nanochat-sft.ipynb`  ⬜ not started — **unblocked 2026-09-27, and WP6 changed its inputs**
+Task decided: **TinyStories-Instruct**. WP6 is done, so everything this package depends on exists.
+
+**Read this before starting — four things WP6 changed underneath this notebook:**
+
+1. **Its checkpoint is invalid.** `checkpoints/nanochat_sft_*.pkl` were fitted to the old
+   tokenizer *and* the old attention. They must be regenerated, not resumed. The pretrained
+   checkpoint they start from is the new `checkpoints/nanochat_best.pkl` (val 0.8126).
+2. **`nanochat_model.py` now exists**, generated by `nanochat.ipynb` (17 functions). Item
+   B2/9.3 below is now a straight import; `load_checkpoint` returns a **dict**.
+3. **The tokenizer is `checkpoints/bpe_tokenizer_train.pkl`** (1024 = 104 chars + 919 merges
+   + `<|endoftext|>` at id 1023), *not* `bpe_tokenizer.pkl`. Loading the wrong one silently
+   produces garbage ids — assert as `nanochat.ipynb` does.
+4. **`<|endoftext|>` exists now**, so the chat format can use a reserved token for turn
+   boundaries rather than `[INST]` text that BPE shreds. `nanochat-chat.ipynb` §8 lists this
+   as a known weakness; the decision below can now fix it instead of inheriting it.
+
+**Also available and worth reusing:** the fixed-budget/no-early-stopping pattern (B5), the
+`fold_in(root_key, step)` batching so a resumed run is identical to an uninterrupted one, and
+the held-out-bpc-against-baselines habit. And the noise floors WP6 measured — **0.002 nats
+between bit-identical re-runs, 0.005 across seeds** — are the bar for any before/after claim
+in this notebook, which is exactly what finding 9.4 says the committed run got wrong.
 
 - [ ] Replace story-continuation with `roneneldan/TinyStories-Instruct` — the pretrained model
       demonstrably fails it, so the before/after in §5 shows a real difference (9.1)
