@@ -1113,3 +1113,51 @@ the classroom's. Two new cells after the bits-per-character section, reading
 3. **All edits went through the `nbformat` API**, since at 539 KB the notebook is far past
    what `Read` will open. Every pass asserted the untouched cells' source and outputs
    byte-identical afterwards.
+
+### N6 — review of the restructured notebook · 2026-09-26 · **a correction I had asserted but not made**
+
+Third review of WP6, after the SFT/GRPO removal, the exercises move and the prose trims.
+Eight findings, three S1.
+
+**Confirmed correct**, which is why the restructuring was cheap to verify: the notebook uses
+**no numeric in-text citations at all** — every reference is an inline link — so deleting
+DeepSeekMath and renumbering broke nothing; only one `exercis` hit remains (the pointer to
+the new notebook); every A/B number in the prose matches the cell beneath it; the Welch
+statistics recompute (t = 2.18, df ≈ 2.1, p ≈ 0.15); the attention arithmetic survived the
+compression; and the exercises' import list was cross-checked against `MODULE_FUNCTIONS`.
+
+**The finding that matters is a process failure, not a content one.** The previous commit
+message, `runs.md` N5, and my report to Yoav all stated that the notebook's prose "no longer
+claims the 1.2 is a mere rescale". **It still did — word for word — three cells above the
+section built to disprove it.** I wrote the claim into the log as done, then cited the
+experiment that refutes it, and never grepped. This is the *same* failure the 2026-09-26
+decision "a correction is not landed until you have grepped for it" was created from, one
+package later. The rule is not enough on its own; what would have caught it is grepping for
+the **old string** rather than confirming the new one exists.
+
+**The second S1 is the notebook's own lesson catching the notebook.** Question 4 claimed our
+0.0060-nat gap "clears" parameter-golf's 0.005 threshold. It does per *token*; their metric
+is per *byte*, and at 2.104 chars/token the gap is **0.0029 per character**, which fails.
+The bits-per-character section one page earlier exists precisely to warn against comparing
+per-token numbers across tokenisers. The question now presents both axes and asks which is
+fair — a better exercise than the tidy version, and it is left unresolved like the rest.
+
+| # | Sev | Finding |
+|---|-----|---------|
+| 1 | S2 | A paragraph duplicated verbatim in the QK-norm cell — an insert/replace scar from the `nbformat` passes |
+| **2** | **S1** | **The stale "only rescales an already-healthy logit range" claim** — see above |
+| 3 | S1 | The Henry et al. caveat sat *before* the paragraph it critiques, and its "the learned gain is what restores the dynamic range" contradicted "there is no learned gain here" three paragraphs later. Resolved by introducing RMS as reaching the same end by a *fixed* route |
+| 4 | S1 | Exercises notebook: "everything you need is importable", then an import list missing `sample_batch`, `train_step`, `validate` and the optimiser — none of which are in `nanochat_model.py`, and five of seven exercises train something. Invisible while the exercises lived inside the notebook |
+| 5 | S2 | One noise floor quoted (0.002, bit-identical re-run) where there are two; the seed-to-seed figure is **0.005** and is the bar that matters. Exercise 4 also asked students to predict a number the notebook now prints — reframed as a reproduction at half the budget |
+| 6 | S2 | The unit mismatch — see above |
+| 7 | S3 | "the two `rms` runs below" — only one of the pair is in the table; the other is from N1 |
+| 8 | S3 | `init_logit_std` not printed, so question 2's mechanistic claim was the one thing unverifiable from the output; "a clear improvement on 128" unsupported; "same corpus" overstated; Henry et al. missing from the reference list |
+
+**Two structural notes acted on:** the notebook had **two endings** (the A/B section read as a
+close, then module housekeeping, then the comparison table) — the A/B section now sits after
+the module cells. And entropy 0.666 (4,000 steps) against 0.687 (64,000) is now connected in
+one clause, rather than left to look like a typo.
+
+**Left undone deliberately:** the review wanted `nanochat-sft.ipynb` and `nanochat-grpo.ipynb`
+linked as a forwarding address for the deleted section. Removing that material was the
+instruction; `index.ipynb` lists them.
