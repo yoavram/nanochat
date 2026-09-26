@@ -1161,3 +1161,31 @@ one clause, rather than left to look like a typo.
 **Left undone deliberately:** the review wanted `nanochat-sft.ipynb` and `nanochat-grpo.ipynb`
 linked as a forwarding address for the deleted section. Removing that material was the
 instruction; `index.ipynb` lists them.
+
+### On the A/B harness, for whoever needs one next
+
+`qknorm_ab.py` is **not committed and is gone with the session that ran it.** That is
+deliberate, not an oversight: it was written before `nanochat_model.py` existed, so it
+re-pastes the model, the optimiser and the training loop — a fifth copy of exactly the thing
+WP6's code-reuse contract removed. Resurrecting it would reintroduce the drift.
+
+Rebuild rather than recover. The evidence it produced is committed
+(`checkpoints/qknorm_ab.json`, six runs), so nothing is lost but ~150 lines of scaffolding,
+and the replacement is shorter and better:
+
+```python
+from nanochat_model import init_params, forward, cross_entropy_loss, precompute_rope, causal_mask
+```
+
+then copy `sample_batch`, `train_step` and `validate` from `nanochat.ipynb`, and vary the one
+thing under test. What is worth carrying over from the original, because each was learned the
+hard way:
+
+- **Hold the validation batches fixed across every variant and seed** (a constant key), so the
+  curve reflects the model changing and not the sample changing.
+- **Seed the init and the data order together**, and write one JSON per run — aggregate after.
+- **Measure the mechanism, not only the loss.** The entropy ratio and the init-time logit sd
+  are what made N1 and N5 explanatory instead of merely conclusive.
+- **Run the variants concurrently, one per GPU.** Two variants cost one variant's wall-clock.
+- **Budget three seeds** whenever the expected effect is near the 0.005 bar; one seed is only
+  defensible when the effect is ~200x the noise, as in `l2` vs `rms`.
