@@ -35,6 +35,11 @@ not only at the end of one.
 | — | **Review adversarially before closing a package** | **Established 2026-09-25/26.** WP5 was committed and pushed, then reviewed by two subagents — one on code correctness, one fact-checking every number against the notebook's own outputs. They found **two real bugs and six wrong prose claims** in work I had already declared done. Both reviews also *confirmed* the two claims that mattered most, which is the other half of the value: `_apply_bpe_merges` was proved equivalent to textbook BPE, and the pipeline encoder byte-identical to `bpe_encode`. **Do this before saying a package is finished, not after.** Split the reviewers by dimension (code vs. claims) and tell each to report what it checked and found *correct*, so coverage is visible. |
 | — | **A correction is not landed until you have grepped for it** | **Established 2026-09-26, the hard way.** On 2026-09-24 I corrected three numbers in the notebook and wrote in `runs.md` T5 that they were fixed "there, in `plan.md`, and here" — while T4's table two sections above still carried the old values, and T3 was entirely pre-correction with no warning. A correction note that was **false about its own document**. Rule: after changing a published number, `grep` the whole repo for the old one, and give superseded sections a banner rather than leaving them to be read as current. |
 | — | **Resolve ids by position, not by string** | **Established 2026-09-25.** Both of WP5's confirmed bugs came from looking a token id up by its spelling (`encoder[vocab[a] + vocab[b]]`, and a regex over the vocabulary to find special tokens). Strings collide; positions cannot. The vocabulary already had a `[characters][merges][specials]` layout — making that contract explicit (`vocab_layout`) removed both bugs and a whole class of future ones. **WP6 has the same shape of contract** in the checkpoint pytree and the parameter layout: prefer structural invariants that can be asserted over name lookups that can silently agree. |
+| — | **Check arithmetic against the definition, not against the story** | **Established 2026-09-26 (WP6, N4).** The notebook claimed unit-L2 QK-norm keeps every attention weight "within about ±13% of 1/256". The real bound is **+28%/−22%**; ±13% is `e^0.125 − 1`, the deviation from the *geometric mean* of the extremes rather than from uniform. It survived two passes and got an exercise built on it **because the conclusion it supported was true** — a 0.78–1.28× spread really does pin the entropy ratio near 1.00, as the A/B then measured at 0.9995. A number that supports a correct story is the hardest kind of error to see. Both S1 findings across WP6's two reviews were of this shape: wrong in a believable, flattering direction, breaking nothing. Brief a reviewer to re-derive each number from its definition, not to check whether it fits the argument. |
+| — | **Review while the long run is still going** | **Established 2026-09-26 (WP6).** The code review was dispatched at the *start* of a 2.3 h retrain rather than after it. It found seven bugs, two of which change the training trajectory — so the run was killed at ~20 minutes and restarted on fixed code, at a cost of 20 minutes instead of 2.3 hours. The code is final the moment the edits land; nothing about reviewing it requires waiting for the run. Corollary: **`nbconvert --inplace` overwrites the notebook when it finishes**, so an edit made during a run is destroyed anyway — there is no version of "fix it while it trains" that works. |
+| — | **Prefer a reviewer's diagnosis to its patch** | **Established 2026-09-26 (WP6).** The review correctly found that `chars_per_token` was counting `<|endoftext|>` as 13 characters of story, inflating compression by 1.6% and flattering the published bpc. Its suggested fix — drop the separators from both the character and the token count — was itself subtly wrong, because the model *does* spend bits predicting the separator and those bits must be charged against the real text. The bug report was right and the patch was not. Re-derive the fix; only accept the finding. |
+| — | **Rehearse a long run at tiny scale first** | **Established 2026-09-26 (WP6).** Before a 2.3 h `nbconvert --execute`, the whole notebook was run end to end at `n_steps=200` on a throwaway copy. It found nothing — and was still worth its ten minutes, because it is the only way to learn that the `inspect.getsource` module-emission cell works under `nbconvert`, that the post-training cells run in the order they appear, and that no late cell references a name defined below it. A failure in the last cell of a long run costs the whole run. Two caveats learned: a rehearsal **writes to the same checkpoint paths as the real run**, and executing cells by `exec` on their source (rather than through a kernel) breaks `inspect.getsource`, so that one cell can only be tested through a real kernel. |
+| — | **Measure the mechanism, not just the outcome** | **Established 2026-09-26 (WP6).** The QK-norm A/B produced a 0.432-nat loss gap, which on its own would only say "the fix helped". The number that *explains* it is the attention entropy ratio: **0.9995 under unit-L2, uniform to within 0.05% in every layer**, exactly as the arithmetic predicted, against 0.668 under RMS. A loss gap is evidence; a mechanism measurement is an explanation, and it is what turns a fix into teaching material. Cheap to add to any A/B — instrument the quantity your hypothesis is *about*. |
 | — | **Ceilings before blame** | Established in WP4, generalisable. Before attributing a model's failure to its architecture, compute what the *task* permits — WP4's suit-blind ceiling (99.82% / 7-of-9) was derived from the data in three lines with no model, and predicted the trained Set Transformer's score exactly. Cheap, and it converts an unexplained blemish into the notebook's strongest claim. Worth asking in WP6–WP8 too. |
 
 ### Environment facts verified 2026-09-20
@@ -960,108 +965,128 @@ Tasks:
 
 ---
 
-### WP6 — `nanochat.ipynb`  ⬜ not started — **inputs are built, nothing is blocked**
+### WP6 — `nanochat.ipynb`  ✅ done 2026-09-26 — **val 0.8126, 0.555 bpc; both reviews done**
+
 **Depends on WP5** (it imports the `bpe.py` that `bpe-tokenizer.ipynb` generates), and on
 WP-T, which is **done**.
 
-**Cold-start summary (2026-09-26).** Everything this package needs exists and is verified:
+**State at 2026-09-26.** Every source edit landed, the code review (N3) done and its seven
+bugs fixed, and the notebook **retrained and re-executed end to end with no errors**:
+**best val 0.8126 nats/token** at step 63,000 of 64,000, 126.8 min on one A4000, held-out
+**0.555 bpc** against a 3.292 character-bigram baseline, attention entropy ratio **0.687**
+(against unit-L2's 0.999). The old model was 1.069. `runs.md` N1–N3 hold the numbers.
+**Both review dimensions are done** — N3 (code, 7 bugs) and N4 (numbers, 9 wrong claims).
+N4's fixes were markdown-only and went in through the `nbformat` API, because at 539 KB the
+notebook is past what `Read` opens and `NotebookEdit` therefore cannot reach it; every code
+cell's source and outputs were asserted byte-identical afterwards, so the committed outputs
+are still the single clean run.
 
-| ready | |
-|---|---|
-| corpus | `checkpoints/train_tokens.npy` — 1,039,345,143 tokens, `uint16`, 2.08 GB, separator count == document count, decodes across boundaries |
-| tokenizer | `checkpoints/bpe_tokenizer_train.pkl` — 104 + 919 + 1 = 1024, `<\|endoftext\|>` at id 1023 |
-| module | `bpe.py`, generated by `bpe-tokenizer.ipynb`; ids read off the `[chars][merges][specials]` layout via `vocab_layout` |
-| decided | parameter-free RMS QK-norm; full train split; 26.2 M params; checkpoints ship in a release (WP-R, deferred) |
+**The A/B decided it (N1).** Two 4,000-step runs, identical but for the normalisation:
 
-**Do the steps in the order listed below.** The `RESUME` fix is first for a reason, and
-the A/B is worth its 30 minutes before a multi-hour retrain.
+| variant | val @ 4,000 | attention entropy ratio |
+|---|---|---|
+| **RMS** (the fix) | **1.0707** | 0.668 |
+| L2 (old code) | 1.5027 | **0.9995** |
 
-⚠ **This package invalidates the SFT and GRPO checkpoints** — they are keyed to the old
-tokenizer *and* the old attention. WP7 and WP8 must follow before `nanochat-chat.ipynb`
-means anything again. Disk was at **36 GB free** on 2026-09-26.
+L2's attention is uniform to within **0.05%** in every layer — the arithmetic in 8.1
+confirmed by measurement, not by reading the old checkpoint. RMS reaches in 4,000 steps
+the loss the old run needed 23,500 for. **E6 confirmed; 8.1 closed.**
 
-- [ ] **Clean the pretraining corpus with `clean_corpus`, at the same `min_count` the
-      tokenizer was built with, and assert it.** This is a hard coupling, not a convention:
-      clean with a different threshold and the corpus contains characters the vocabulary has
-      no id for, and `bpe_encode` raises **partway through encoding 2.23 GB** — an hour in.
-      Cheap to hit, tedious to debug. Check `set(corpus) <= set(vocab)` before starting the
-      encode, not during it. The tokenizer pickle does not record `min_count`, so either
-      re-derive the inventory from the saved vocabulary (`[t for t in vocab if len(t)==1]`)
-      or pass the threshold explicitly.
-**Step 1 happens before any edit.**
+- [x] **Corpus/tokenizer coupling asserted.** The notebook no longer encodes anything: it
+      loads `train_tokens.npy` and asserts `tokens.max() < vocab_size` and that the
+      separator id matches `vocab_layout`, before any training. The "clean at the same
+      `min_count`" hazard is gone with the encode itself.
+- [x] **8.1 arithmetic** stated in prose; the entropy measurement is in the notebook as
+      teaching material, and was run for real in the A/B.
+- [x] **The short A/B, run before the retrain** — N1 above.
+- [x] **Expected result tempered.** The notebook now says the old model was degenerate,
+      not inert: ±13% still carries gradient, the residual stream still carries the current
+      token, so it was "current token + almost unweighted bag of context" — which is why it
+      still reached 1.069, and why the bug is worth studying precisely because nothing
+      crashes.
+- [x] ~~Learnable per-head gain?~~ **NO — parameter-free** (Yoav 2026-09-25). Implemented
+      as `qk_norm(x) = x / sqrt(mean(x²))`, no learned weight, `1/sqrt(head_dim)` scale
+      kept. The reference's fixed `*1.2` is deliberately omitted and the omission is noted
+      in prose.
+- [x] Replaced the L2 normalisation with RMS; retraining now. **This re-opens WP7 and WP8**,
+      which must regenerate the SFT and GRPO checkpoints.
+- [x] Attention-map figure across layers (8.10), with the entropy ratio as its quantitative
+      half — decoupled from the decision, kept as teaching material.
+- [x] RoPE prose now matches the split-half code (8.2), and says the two conventions are a
+      fixed permutation apart so weights are not portable between them.
+- [x] Scaling table generated (8.3). `param_exact` counts from the shapes, is asserted
+      equal to `count_params(init_params(...))`, and reproduces **26,223,104**. The
+      embedding + untied head term the formula omits is shown as 4.0% at our scale.
+- [x] Vocab size and chars/token read from the loaded tokenizer (8.4): 1024, ~2.14.
+- [x] Cell 50's table fixed (8.5): vocab 1024, 26.2M params, `optax.adamw`, plus a QK-norm
+      row and the real corpus size.
+- [x] "nats per token" throughout; `\text` typo fixed (8.6). bpt vs bpc distinction made
+      explicit, since bpc is what the baseline table needs.
+- [x] **Re-run end to end (8.7)** — outputs stripped first, every prose/code edit landed
+      before execution, then one clean `nbconvert --execute`.
+- [x] **Explicit `RESUME`, default off (8.8).** Done first, as the plan required. Resume
+      additionally asserts the checkpoint's tokenizer matches the loaded one — the pytree
+      shapes are identical across the architecture change, so shape checks cannot catch it.
+- [x] WP-T coordination: loads `bpe_tokenizer_train.pkl` (**not** the valid-split teaching
+      tokenizer) and the prepared `train_tokens.npy`.
+- [x] **A3 fixed, and more cheaply than planned.** The 2.23 GB double-hold is gone with the
+      raw-text read. The windows are no longer materialised either: the corpus stays flat
+      and `uint16` on the host, `sample_batch` cuts 33 KB batches out of it. The old
+      `(4.06M, 257)` device array was 4 GB before the first step.
+- [x] **B5:** fixed step budget, no early stopping, best-checkpoint saving retained. The
+      budget is *derived* — 20 tokens/param → 64,000 steps — rather than a round number.
+- [x] Held-out bpc against the TinyStories character baselines (8.9, A4), on a fixed grid
+      of windows so the number is reproducible. The Shakespeare-trained char models are
+      deliberately **not** in the table (review correction #6: bpc is only comparable
+      within one corpus).
+- [x] `generate` hoisted, fixed-shape-buffered and jitted (8.12), ported from WP-C rather
+      than re-derived, **plus** `<|endoftext|>` stopping — which the retokenised corpus
+      makes possible for the first time and which answers one of `nanochat-chat.ipynb`'s
+      own "what is missing" items.
+- [x] 8.13 duplicate heading (repurposed, not deleted — it now introduces the
+      separator-boundary decode); 8.14 bare `except` gone with the cell it was in;
+      8.15 perplexity example now the real one (`log(1024) = 6.93` at init);
+      8.16 FLOPs clause added.
+- [x] 8.17 vocab-ablation exercise handed to `bpe-tokenizer.ipynb`; 8.18 `scan` exercise
+      re-scoped to a throughput measurement, since WP2 already introduced `scan`.
+- [x] **`nanochat_model.py` is generated** by the notebook via `inspect.getsource`, same
+      mechanism as `bpe.py`, with a reimport self-test (checkpoint round-trip, `generate`,
+      and the `‖qk_norm(q)‖ = sqrt(head_dim)` invariant). 17 functions, 360 lines.
+      Verified under `nbconvert`: `inspect.getsource` works on a `@jax.jit`-wrapped
+      function and keeps the decorator line.
+- [x] **WP-C's `top_k`/`top_p` reconciled.** `nanochat.ipynb`'s `sample_token` is now
+      WP-C's (greedy at `temperature=0`, `<` not `<=` on the nucleus, returns a JAX array),
+      and `generate` takes a checkpoint **dict**. One implementation, in the module.
 
-- [ ] **8.1 is already confirmed by arithmetic, so the entropy measurement is not a gate.**
-      Verified in the code: RoPE, then `Q /= ‖Q‖₂`, `K` likewise, then `/sqrt(64)`. Logits
-      land in [-0.125, 0.125]; spread 0.25; max ratio between two softmax weights
-      e^0.25 = **1.284**. With `seq_len=256` every weight sits within ±13% of 1/256.
-      Attention is a near-uniform mean of V **by construction**. Do not spend an hour
-      measuring what the arithmetic already proves.
-- [ ] **The decision-relevant experiment is a short A/B**: ~2,000 steps of each variant,
-      ~15 min apiece, compared on val loss. Run that before committing to a 4–7 h retrain.
-- [ ] Temper the expected result in the prose: the current setup is *degenerate*, not inert.
-      The ±13% deviations still carry gradient and the residual stream still carries the
-      current token, so the model is "current token + bag of context" — which is why it
-      still reached 1.069 nats/token. Expect a real but not miraculous improvement.
-- [x] ~~Decide: does the RMS QK-norm get a learnable per-head gain?~~ **Decided by Yoav
-      2026-09-25: NO — parameter-free.** Verified against the reference
-      (`github.com/karpathy/nanochat`, `nanochat/gpt.py`): `norm(x) = F.rms_norm(x,
-      (x.size(-1),))` applied as `q, k = norm(q), norm(k)`, then a fixed `q *= 1.2; k *= 1.2`.
-      No learnable weight. So `init_params`, the parameter count and the checkpoint schema
-      are all **unchanged** — which is exactly why the `RESUME` row below is dangerous:
-      the old L2-normed checkpoint has an identical pytree and will load without error.
-- [ ] Then replace the L2 normalisation with RMS-style per-head norm, keep the
-      `1/sqrt(head_dim)` scale, retrain, and regenerate the SFT and GRPO checkpoints.
-      This re-opens WP7 and WP8.
-- [ ] Keep the entropy / attention-map figure as **teaching material** (8.10), decoupled
-      from the decision.
-- [ ] Make the RoPE prose match the RoPE code — prose is interleaved, code is split-half (8.2)
-- [ ] Generate the scaling table from `param_formula` / `init_params`; cell 26 contradicts
-      cell 27's own output and contradicts itself (8.3)
-- [ ] Read vocab size and chars-per-token from the loaded tokenizer: 1024 and ~2.2, not
-      512 and "3–4" (8.4)
-- [ ] Fix cell 50's table: vocab 1024, 26.2M params, `optax.adamw` (8.5)
-- [ ] "nats per token", not "bits-per-token"; fix the `\text` typo (8.6)
-- [ ] Re-run end to end or strip: committed outputs are a composite of several runs (8.7)
-- [ ] **Explicit `RESUME` flag, default off (8.8) — do this FIRST, before the A/B.**
-      `resume_from = checkpoint_path` will otherwise silently load the old L2-normed
-      checkpoint into the new architecture and, because the pytree shapes are identical,
-      will not even error. WP6 owns this item, not WP0
-- [ ] Coordinate with **WP-T**: the tokenizer/separator/`uint16`/retokenise decisions live
-      there, and 8.11 is executed there, not here
-- [ ] **A3 for this notebook, as amended.** Cell 32 repeats the 2.23 GB download and holds
-      the corpus twice — the double-hold is still a bug, fix it. But **the "default to the
-      valid split" half is superseded**: Yoav 2026-09-25 chose the **full train split at
-      26.2 M parameters**, because students get the checkpoints in a release (B6 reversed)
-      and the artifact should be a real nanoGPT. **The corpus does not need re-downloading or
-      re-tokenising** — WP-T already built it:
-      `checkpoints/train_tokens.npy` (1,039,345,143 tokens, `uint16`, 2.08 GB) and
-      `checkpoints/bpe_tokenizer_train.pkl` (104 chars + 919 merges + `<|endoftext|>` at id
-      1023). This notebook should **load those**, and `build_train_artifacts.py` rebuilds
-      them in 16 min if they are missing. Note `checkpoints/bpe_tokenizer.pkl` is the
-      *valid-split* teaching tokenizer from `bpe-tokenizer.ipynb` — **the wrong one for
-      pretraining**; load `_train`
-- [ ] **B5 for this notebook:** fixed step budget, no early stopping; keep best-checkpoint
-      *saving* (that is how class-time checkpoints are produced). `nanochat.ipynb` is one of
-      the six training notebooks B5 covers and has no Part C ID of its own
-- [ ] Held-out bpc + WP1 baselines (8.9, A4)
-- [ ] Attention-map figure across layers for a TinyStories sentence (8.10)
-- [ ] `generate`: hoist the RoPE tables and mask out of the per-token loop, **and jit it**
-      (both halves of 8.12; KV caching / 6.5 is deferred, so nothing else covers this)
-- [ ] Duplicate "## Data Preparation" headings (8.13); bare `except:` (8.14); perplexity
-      example that matches the real val loss (8.15); FLOPs clause (8.16)
-- [ ] Exercise 4 duplicates bpe Exercise 1 — assign to one notebook (8.17);
-      re-scope Exercise 7 if WP2 already introduced `scan` (8.18)
-- [ ] Per the code reuse contract, the model cells **generate `nanochat_model.py`**; sft,
-      grpo **and `nanochat-chat.ipynb`** import it and stop re-pasting the model.
-      `load_checkpoint` returns a **dict** everywhere (B2, 8.x, 9.3, 10.9).
-      **Four pasted copies now, not three** — see WP-C
-- [ ] **From WP-C, inherited from the deleted `nanochat_chat.py`:** reconcile `generate`
-      with the `top_k`/`top_p` sampling that now lives in `nanochat-chat.ipynb`, so
-      `nanochat_model.generate` is the one implementation. WP-C already did the
-      `generate` half of **8.12** (fixed-shape buffer, hoisted RoPE/mask, jitted) —
-      port that implementation rather than re-deriving it
+**Deferred to WP7/WP8/WP-C, deliberately:** switching `nanochat-sft.ipynb`,
+`nanochat-grpo.ipynb` and `nanochat-chat.ipynb` from their pasted model copies to
+`import nanochat_model`. WP6 *produces* the module; those three notebooks are being
+rewritten in their own packages and must regenerate their checkpoints against the new
+architecture anyway, so doing the import surgery here would be work done twice.
 
----
+**Code review done (N3), and it paid for itself.** Run *during* the retrain rather than
+after, which made the fixes free — the first retrain was killed at ~20 min and restarted on
+fixed code, because two fixes change the training trajectory and `nbconvert --inplace` would
+have overwritten any edit regardless. Seven bugs, all fixed and re-rehearsed:
+`generate` silently returning `''` on a full-length prompt (S2); **`chars_per_token` counting
+`<|endoftext|>` as 13 characters of story, inflating compression 1.6% and understating the
+published bpc**; a one-short `sample_batch` bound; `step` undefined if the loop never runs;
+**resume replaying the data** because the PRNG key reset to 0 while the step counter did not
+(now `fold_in(root_key, step)`, which is resumable as well as reproducible);
+`os.makedirs('')` on a bare filename in a function that ships downstream; and prose claiming
+the char baselines were on "this corpus" when they are on the valid split.
+
+The review also *confirmed* the load-bearing claims: RoPE prose verified element-by-element
+against the code, `param_exact` exact for three configs, the padded-buffer `generate`
+equal to a full `forward` to 6e-8, no forward references across cells, and no missing name
+in the generated module. Detail worth keeping: the reviewer's patch for the bpc bug was
+itself slightly wrong (it dropped separators from the token count too, but the model *does*
+spend bits on them) — **take a reviewer's diagnosis more readily than its patch.**
+
+**Remaining in WP6:** verify the run's outputs, check source size is still editable (23.5k
+tokens of source — under the 25k limit but with little headroom), commit, and run the
+**second** review dimension — every number in the committed outputs checked against the
+notebook's own claims — before declaring the package done.
 
 ### WP7 — `nanochat-sft.ipynb`  ⬜ not started
 Depends on WP6 (and on its retrain, if 8.1 is confirmed). Task decided: **TinyStories-Instruct**.
@@ -1400,6 +1425,7 @@ does not hold.
 
 | Date | WP | What happened |
 |------|----|---------------|
+| 2026-09-26 | WP6 | **WP6 edits landed and the QK-norm question settled by experiment.** Outputs stripped first (8.7 permits it, and the notebook was 28k tokens — unreadable by `Read`), then every prose and code edit landed *before* execution, per the size ground rule. **The A/B (N1) is the result:** 4,000 steps of RMS QK-norm against 4,000 of the old unit-L2, identical in init, data order and validation batches. Val **1.0707 vs 1.5027**, a 0.432-nat gap visible from step 200. The decisive number is not the loss but the **attention entropy ratio: L2 sits at 0.9995 — uniform to within 0.05% in every one of the 8 layers** — against RMS's 0.668. 8.1's arithmetic confirmed by measurement rather than by reading the old checkpoint, and E6 closed. **Tempering that matters:** RMS reaches in 4,000 steps the 1.069 the old run needed 23,500 for, so the old model was not broken, just paying ~6x the compute; the notebook now says so. Also landed: `RESUME=False` first (the pytrees are identical across the change, so nothing would have errored); A3 fixed more cheaply than planned (corpus stays flat/`uint16` on the host, `sample_batch` cuts 33 KB batches — the old code built a 4 GB device array before step 1); B5 fixed budget *derived* from Chinchilla (64,000 steps); the scaling table now generated and asserted against `init_params` (reproduces 26,223,104); held-out bpc against the TinyStories char baselines; attention maps (8.10); jitted fixed-buffer `generate` ported from WP-C plus `<|endoftext|>` stopping; and **`nanochat_model.py` is now generated** by the notebook with a reimport self-test. **A 200-step rehearsal of the whole notebook** was run before the real one — it found nothing, but it is the only way to confirm `inspect.getsource` survives `nbconvert` without spending 2.3 h to find out. It also overwrote the old checkpoints, which WP6 invalidates by design. Retrain in flight; review and commit still to come. |
 | 2026-09-26 | WP5 | **Two subagent reviews of WP5, and the fixes** (`1c5fcff`, `72dc682`). Reviewed *after* the package was committed and pushed — which is the wrong order, and is now a ground rule. **Confirmed sound:** `_apply_bpe_merges` ("apply each rule once in training order") was *proved* and empirically verified equivalent to textbook BPE over 6,148 segments, 0 disagreements; and `build_train_artifacts.py`'s streaming encoder is byte-identical to `bpe_encode` on 300 real documents — so the 1.04 B-token corpus was valid. **Two real bugs, one root cause:** ids were resolved by *string*, so a learned merge spelling a special token stole its id, and a learned token shaped `<|…|>` was silently treated as special (−50% compression on the reviewer's corpus). Fixed structurally by making the `[characters][merges][specials]` layout explicit (`vocab_layout`) and reading ids off positions; `SPECIAL_TOKEN_RE` deleted. **Verified behaviour-preserving — re-encoding reproduces `train_tokens.npy` byte-for-byte**, so no rebuild. Also fixed: `bpe_train` silently returning a short vocabulary (the toy example printed `vocab_size=14` after asking for 15, in committed output I had read twice), the sweep omitting `special_tokens` so its 1024-point was not the shipped tokenizer, a hand-typed module preamble that could drift, and two `build_train_artifacts.py` footguns (bare `KeyError` minutes in; `--sample-frac` silently ignored when a cached tokenizer existed). **Six prose claims were wrong**, including "forty-six times more documents" (98×; I conflated it with the drop-rate ratio *in the sentence that states that ratio correctly*), "`minisweagent.ipynb` imports `bpe.py`" (it does not), and "our longest tokens are bare words" (contradicted by the chart directly beneath). **And `runs.md` T5 claimed corrections had landed that had not** — T4 still carried 228 / 389 / +124. T2/T3 bannered, T4 corrected. Three cross-cutting lessons promoted to the decisions table. |
 | 2026-09-25 | WP5/WP-T/WP-R | **Single branch `revision2026`; WP-T delivered; the notebook now samples.** Branch consolidation (Yoav): stacking a branch per package meant each carried the previous one's unmerged commits — `revision2026` cut at `33c74c0` already contains WP4/WP5, and `sets-revision`/`wp5-bpe-tokenizer` are superseded. **WP-T done in 15.9 min** (budgeted 1–3 h): `bpe_tokenizer_train.pkl` (104 chars + 919 merges + 1 special) and `train_tokens.npy` (1,039,345,143 tokens, **uint16, 2.08 GB** against the old int64 file's 8.5 GB), verified by separator count, max id and boundary decoding. **Three published numbers were wrong and the run caught them** — 230 documents dropped (0.0085%) not 389 (0.014%), 227 distinct characters not 228, +123 merges not +124; the 389 had been measured for the frequency-only rule rather than the frequency ∪ ASCII rule shipped. **The notebook now samples** (`SAMPLE_FRAC = 0.10`), closing a preach-vs-practice gap Yoav caught: the sampling section explained a mechanism the code never exercised, which also left `chars=keep_chars` inert. A new cell measures character coverage by sample size (10% sees 72/79, missing `/0678=` and a backtick), and the fraction was chosen by measurement — 10% is within **0.08%** of full-corpus compression for a third of the time. The sampling trap and the always-keep-ASCII clause turn out to defend the same characters. Yoav's decisions recorded: **B6 reversed** (ship `.pkl` in a release; GPUs assumed, no in-class training), **real model not a toy**, **parameter-free RMS QK-norm** (verified against nanochat), **full train split at 26.2 M**. **WP-R created and deferred** — a release cut now would publish checkpoints WP6–WP8 are about to invalidate. Numbers in `runs.md` T5. |
 | 2026-09-24 | WP5 | **Corpus cleaning built into the notebook and emitted into `bpe.py`** (`6d8ea54`, `9d735c7`). Yoav's steer: **this is teaching material, not a pipeline step** — register is a workshop notebook, so the cleanup is derived and explained rather than hidden in a WP-T script. New Step 4 shows why characters are the *floor* of the vocabulary (`merges = vocab_size − characters − specials`, so a character occurring once costs what `e` costs). `clean_corpus` drops whole documents rather than editing text — an edit you cannot detect beats a loss you can is the same principle as 7.10's raise — and returns the inventory for `bpe_train(chars=...)`. **WP6 must call the identical function** on the pretraining corpus. Committed tokenizer: **79 characters + 944 merges + 1 special**, 109 of 27,630 documents dropped (0.39%), held-out **2.11×**. The teaching payoff is the two-corpus contrast: valid **+9 merges for 0.39%** of documents, train **+123 for 0.0085%** — 100× the text gives 2.6× the characters, nearly all junk, so cleaning pays *more* on bigger corpora while costing *less*. **Third prose-ahead-of-measurement correction in this package**: cleaning drops `é` (4 occurrences) and `ñ` (1), so accented Spanish now **refuses** where it encoded before — the OOV section was rebuilt around it, and the lesson improved (cleaning replaced an *accidental* boundary with a *stated* one; both arbitrary, only one writable down and changeable on purpose). `bpe_encode`'s error text also wrongly said such characters "never occurred in the training corpus" and now names both causes. Separator cost re-measured under the cleaned vocabulary: 2.1089× → **2.1088×**. Numbers in `runs.md` T4. |

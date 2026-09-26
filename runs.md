@@ -837,3 +837,206 @@ subset but the rare tail, and for a children's-story corpus the rare tail is pre
 the punctuation a *person* would later type. Without `chars=keep_chars` the shipped
 tokenizer would refuse `50% off`, `x <= y`, an email address and a dict literal — and
 only at the moment someone tried. This is now the notebook's sampling section.
+
+---
+
+# Run log — nanochat pretraining (WP6)
+
+## N1 — QK-norm A/B · 2026-09-26 · **decided the retrain**
+
+**Question.** `nanochat.ipynb` normalised Q and K to unit L2 length before the
+`1/sqrt(head_dim)` scale. Review finding 8.1 argued this flattens attention by
+construction. The arithmetic is not in doubt — with `head_dim=64` every attention logit
+lands in [-0.125, 0.125], so over a 256-token context no weight can sit more than ±13%
+from 1/256 — but arithmetic does not say what it *costs*. This run measures the cost
+before paying for a multi-hour retrain.
+
+**Design.** Two runs, identical in every respect but the normalisation: same init key,
+same data order, same validation batches (a fixed key, so both variants are scored on the
+same windows), same optimiser and schedule. Full nanochat config — 26,223,104 params,
+d_model 512, 8 heads, 8 layers, context 256, batch 32, `adamw(3e-4, wd=0.1)` — on the
+train-split corpus. 4,000 steps each, run concurrently on the two A4000s.
+Script: `qknorm_ab.py` (scratch; not committed — the notebook is the artifact).
+
+| variant | val @ 4,000 | attention entropy ratio | wall-clock |
+|---|---|---|---|
+| **RMS** (`x / sqrt(mean(x²))`, the fix) | **1.0707** | **0.668** | 513 s |
+| L2 (`x / ‖x‖₂`, the old code) | 1.5027 | **0.9995** | 555 s |
+
+**The gap is 0.432 nats/token** — two orders of magnitude beyond anything seed noise
+could produce, and visible from step 200 onwards. Val loss by step:
+
+| step | 100 | 600 | 1100 | 1600 | 2100 | 2600 | 3100 | 3600 | 4000 |
+|---|---|---|---|---|---|---|---|---|---|
+| RMS | 3.292 | 1.625 | 1.353 | 1.241 | 1.180 | 1.140 | 1.110 | 1.086 | **1.071** |
+| L2 | 3.438 | 2.510 | 2.001 | 1.827 | 1.711 | 1.635 | 1.576 | 1.535 | **1.503** |
+
+**The entropy ratio is the finding, not the loss.** Mean row-entropy of the attention
+distributions divided by the entropy of the uniform distribution over the positions each
+row may see; 1.0 means the head averages its whole context, 0 means it has picked out one
+position. Under L2 it is **0.9995**, and per-layer it reads
+`[1.000, 0.999, 1.000, 0.999, 0.999, 0.999, 1.000, 1.000]` — attention is uniform to
+within 0.05%, in every layer, exactly as the arithmetic predicts and regardless of what
+the weights do. Under RMS it is 0.668, ranging 0.601–0.720 across layers. This is the
+measurement 8.1 asked for, obtained from a live A/B rather than from the old checkpoint.
+
+**Context for the old published number.** The original run reached val **1.069** after
+23,500 steps with early stopping. The RMS variant reaches **1.071 in 4,000 steps** —
+about 6× fewer steps for the same loss. So the old model was not broken, as the review's
+wording ("flattens attention") might suggest: it was a "current token + almost unweighted
+bag of context" model, which on TinyStories still learns a great deal. It was just paying
+roughly 6× the compute for it. That tempering is now in the notebook prose.
+
+**Decision: retrain with parameter-free RMS QK-norm.** Confirms E6 and closes 8.1.
+
+## N2 — nanochat retrain · 2026-09-26 · **val 0.8126, against the old model's 1.069**
+
+Budget set from the scaling law rather than a round number:
+20 tokens/parameter × 26,223,104 = 524M tokens = **64,000 steps** × 32 × 256
+(0.51 epochs of the 1.04B-token corpus). Fixed budget, **no early stopping** (B5);
+best-checkpoint saving retained, since that is the checkpoint that ships.
+One `nbconvert --execute` of the whole notebook, so the committed outputs are a single
+run (8.7) rather than the composite the review found.
+
+**This is the second launch.** The first was killed at ~20 min when the code review (N3)
+landed — two of its fixes change the training trajectory, and `nbconvert --inplace`
+overwrites the notebook at the end, so there was no way to fix and keep the run.
+
+| | |
+|---|---|
+| wall-clock | **126.8 min** on one A4000 (0.119 s/step, slightly better than the A/B's 0.128) |
+| best val | **0.8126 nats/token at step 63,000** |
+| final val | 0.817 at step 64,000 — still improving, gently |
+| held-out loss | 0.8087 nats/token, perplexity 2.2 |
+| compression | 2.104 chars/token (separators excluded from the character count) |
+| **bits per character** | **0.555** |
+| attention entropy ratio | **0.687** (0.505 at layer 0 rising to 0.773 at layer 7) |
+
+**Against the baselines** — the point of A4/8.9, and the reason the table exists:
+
+| model | bpc |
+|---|---|
+| uniform over 1024 tokens | 4.754 |
+| character unigram | 4.446 |
+| character bigram | 3.292 |
+| **nanochat, 26.2M params** | **0.555** |
+
+**Against the old model: 1.069 → 0.8126 nats/token**, a 0.256-nat improvement, and the old
+figure came from an *early-stopped* 23,500-step run while this one is a fixed 64,000-step
+budget — so the comparison is not like-for-like on compute, only on outcome. The honest
+statement is the one the A/B (N1) supports: same architecture and data, the normalisation
+is the only difference, and it is worth ~0.43 nats at 4,000 steps.
+
+**The entropy ratio rises monotonically with depth** (0.505 → 0.773): the early layers
+attend sharply, the late layers more broadly. Under unit-L2 all eight sat at 0.999. Nothing
+in the notebook predicted the *direction* of that gradient, and it is not claimed as a
+result — it is simply what this checkpoint does, and it is now a figure students can look
+at.
+
+**Samples are coherent.** "Once upon a time there was a little girl named Maria. She was
+only three years old and loved to explore. One day, she was walking through the park when
+she came across a big pile of hay." — grammatical, narratively structured, and stopping
+only because `max_new_tokens=80` ran out.
+
+### Gotchas from this package
+
+- **A 200-step rehearsal of the whole notebook is worth its 10 minutes.** It caught
+  nothing in the end, but it is the only way to learn that the `inspect.getsource`
+  module-emission cell works under `nbconvert` *before* spending 2.3 h to find out.
+  `inspect.getsource` does work on a `@jax.jit`-wrapped function, and returns the
+  decorator line with it, so the generated module keeps its `jit`.
+- **The rehearsal overwrote `checkpoints/nanochat_{checkpoint,best}.pkl`** with its
+  200-step model, destroying the old L2-normed checkpoints. No loss: WP6 invalidates them
+  by design, and N1 measured the L2 variant directly rather than from that checkpoint.
+  But it is a reminder that a rehearsal writes to the same paths as the real run.
+- **Do not materialise the training windows.** The old code built a `(4.06M, 257)` array
+  and pushed it to the device — 4 GB before a single step. Keeping the corpus flat and
+  `uint16` on the host and cutting 33 KB batches out of it costs nothing measurable and
+  removes the memory ceiling entirely (A3).
+
+### N3 — adversarial code review of WP6 · 2026-09-26 · **7 bugs, one of which moved a published number**
+
+Per the ground rule, reviewed before closing the package — and, this time, *during* the
+retrain rather than after it, which is what made the fixes free. The first retrain was
+**killed at ~20 min and restarted** once the review landed, because two of the fixes change
+the training trajectory and `nbconvert --inplace` would have overwritten any edit anyway.
+
+**Confirmed correct** (the half of a review that is worth as much as the bug list):
+`qk_norm` leaves `‖x‖₂ = 7.9999995 = sqrt(64)`; the RoPE prose was verified
+element-by-element against the code for `d=8, T=5` — **the split-half claim in 8.2 is exactly
+what `apply_rope` computes** — and relative-position invariance holds to float precision;
+`param_exact` is exact for three configs including a non-default `d_ff`; `next_token_logits`
+on the padded buffer matches `forward` on the exact-length sequence to **6e-8**, so the
+fixed-shape trick is genuinely equivalent; nucleus sampling matches a reference
+implementation across five `top_p` values; train and val cannot overlap and no window
+crosses the boundary; an AST pass over every code cell found **no cell using a name defined
+in a later cell**; and an AST free-variable pass over the generated `nanochat_model.py`
+found **no missing name** — the module imports clean and round-trips in a fresh process.
+Also confirmed: QK-norm after RoPE commutes with QK-norm before it (RoPE is norm-preserving,
+RMS-norm is a scalar rescale), so applying it in the other order from the reference is not a
+difference.
+
+| # | Sev | Bug | Fix |
+|---|---|---|---|
+| B1 | S2 | `generate` returned `''` with no error for any prompt of ≥ `seq_len` tokens — truncation kept `seq_len`, leaving no room to write | keep `seq_len - 1` |
+| **B2** | **S3→real** | **`chars_per_token` counted `<\|endoftext\|>` as 13 characters of story**, inflating compression 2.1037 → 2.1382 (**+1.6%**) and understating bpc by the same | drop separators from the character count, keep them in the token count |
+| B3 | S3 | `sample_batch` upper bound one short (`maxval` is exclusive); one legal window unreachable | `len(data) - context_len` |
+| B4 | S3 | final `save_checkpoint` used the loop variable `step`, undefined if the loop never runs (a `RESUME` past `n_steps`) | initialise `step = start_step` |
+| B5 | S3 | **resume replayed the data** — the PRNG key reset to seed 0 while the step counter continued, and the key was not checkpointed | draw batch *t* from `fold_in(root_key, t)` |
+| B6 | S3 | `save_checkpoint` raised on a bare filename (`os.makedirs('')`) — never hit here, but the function ships in `nanochat_model.py` | guard the empty dirname |
+| B7 | S3 | prose claimed the char baselines were computed "on this corpus"; they are on the **valid** split (vocab 91) while the model is scored on held-out **train** text (vocab 104) | name the split, state the caveat |
+
+**B2 is the one that mattered**, and it is the same failure mode WP5's review found: a
+number that looks right, is quietly wrong in the flattering direction, and would have been
+published. The fix moved the rehearsal's bpc from 1.661 to **1.680** — *worse*, which is the
+tell. Worth noting the reviewer's proposed fix (drop separators from both counts) was itself
+slightly wrong: the model spends bits predicting the separator, so those bits have to be
+charged against the real text. Take a reviewer's diagnosis more readily than its patch.
+
+**B5 is the one worth remembering.** "Reproducible" and "resumable" are different
+properties. A running `split` gives the first, not the second; `fold_in(root_key, step)`
+gives both, and costs nothing.
+
+### N4 — adversarial fact-check of WP6 · 2026-09-26 · **the ±13% was mine, and it was wrong**
+
+Second review dimension: every number in the prose checked against the notebook's own
+executed output. All nine fixes are **markdown-only**, so no output was touched and no
+re-run was needed — applied through the `nbformat` API, because at 539 KB the notebook is
+past what `Read` will open and `NotebookEdit` therefore cannot reach it (the failure mode
+`CLAUDE.md` documents). Validated afterwards: `nbformat.validate` clean, cell count and
+types unchanged, and **every code cell's source, outputs and `execution_count` asserted
+byte-identical** to before the edit.
+
+**Confirmed correct** — a long list, which is the point of asking: 104+919+1 = 1024; the
+26,223,104 parameter count derived independently from the shapes; the step-budget
+derivation 20 × 26,223,104 / 8192 → 64,000; 524M tokens = 0.51 epochs; bpt = 0.8087/ln2 =
+1.1667 and bpc = 1.1667/2.1035 = 0.5546; uniform bpc = 10/2.1035 = 4.754; the 4 GB figure
+for the materialised windows (4,039,642 × 257 × 4 B = 4.15 GB); the 1.64% separator
+inflation; RoPE θ_i and the split-half convention; and the deliberate absence of any numeric
+*prediction* for the post-fix entropy ratio, so the measured 0.687 contradicts nothing.
+
+| # | Sev | Wrong claim | Correct |
+|---|---|---|---|
+| **1** | **HIGH** | "every weight sits within about **±13%** of 1/256", stated in **two** cells and load-bearing for Exercise 4 | **+28.3% / −22.1%.** Weights lie in [0.78, 1.28] × 1/256 |
+| **2** | **HIGH** | "4.6 s including the compile, then 0.2 s — about 3 ms/token" | The cell directly below prints **5.2 s, then 0.5–2.4 s**. Prose now points at the printed timings and explains the spread |
+| 3 | MED | embedding+head is "the *dominant* term for a small model" | 4.0% here, 14.3% at depth 4; dominant only above V ≈ 6,000 |
+| 4 | MED-LOW | int64 corpus "8.5 GB" | **8.31 GB** (the 8.5 was the *old* windowed file, not this one) |
+| 5 | MED-LOW | "bpc ≈ 1.0–1.5" next to a measured 0.555 | true of *general* English; TinyStories is far more predictable — now said |
+| 6 | LOW | entropy table's three columns do not divide | ratio column is the **mean of per-row ratios**; Jensen. Explained in the markdown rather than changing a printed output |
+| 7 | LOW | "generated by GPT-3.5 and GPT-4" | V2-GPT4 is **GPT-4 only** |
+| 8 | LOW | dead link `bpe_tokenizer.ipynb` | `bpe-tokenizer.ipynb` |
+| 9 | COSMETIC | shape check prints `= 4.000` two cells after the prose argues the value is 8 | toy `head_dim` is 16; noted in prose |
+
+**Finding 1 is the one to learn from.** ±13% is `e^0.125 − 1` — the deviation from the
+*geometric mean* of the two extremes, not from uniform. The correct bound comes from the
+softmax itself: one logit at +0.125 against 255 at −0.125 gives
+`e^0.125 / (e^0.125 + 255·e^-0.125) = 1.283 × 1/256`. I derived a plausible-looking number
+from the right starting point and never checked it against the definition, then repeated it
+in a second cell and built an exercise on it. **The conclusion was unaffected** — a spread
+of 0.78–1.28× still forces an entropy ratio of ~0.997, which is what the A/B measured at
+0.9995 — which is exactly why it survived two passes: the story it supported was true.
+
+**Both S1-severity findings across N3 and N4 were numbers that flattered or simplified in a
+believable direction** (the bpc inflation, and this). Neither broke anything. That is the
+class of error this project keeps producing, and the only thing that catches it is a
+reviewer told to check arithmetic against the definition rather than against the narrative.
