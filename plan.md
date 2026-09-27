@@ -30,8 +30,8 @@ not only at the end of one.
 | WP10 `index.ipynb` rewrite | ⬜ not started | do last; WP7 already refreshed its SFT line |
 | WP-R checkpoint release | ⬜ deferred | near delivery |
 
-**Branch `revision2026` is one commit ahead of `origin/revision2026`** — WP7 is committed
-locally but **not pushed**. Push it, or confirm it should stay local, before starting WP8.
+**Branch `revision2026` is pushed and in sync with `origin/revision2026`** as of `2a06527`
+(2026-09-27). Nothing is waiting to go out.
 
 **Artifacts on disk that WP8 needs** (none are in git; all are gitignored by `*.pkl`,
 `*.npy`, `*.npz`):
@@ -1179,7 +1179,7 @@ tokens of source — under the 25k limit but with little headroom), commit, and 
 **second** review dimension — every number in the committed outputs checked against the
 notebook's own claims — before declaring the package done.
 
-### WP7 — `nanochat-sft.ipynb`  ✅ **done 2026-09-27** — 0.8437 → 0.6533 nats/token, constraint satisfaction 0.092 → 0.467 against a 0.686 ceiling
+### WP7 — `nanochat-sft.ipynb`  ✅ **done and pushed 2026-09-27** (`5045567`) — 0.8437 → 0.6533 nats/token, constraint satisfaction 0.092 → 0.467 against a 0.686 ceiling
 Task: **TinyStories-Instruct**, as decided in E3. Numbers in `runs.md` **S1**; the budget
 experiment that set the epoch count is **S2**. Reviewed adversarially (below) before commit.
 
