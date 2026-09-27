@@ -15,6 +15,53 @@ not only at the end of one.
 
 ---
 
+## START HERE — state as of 2026-09-27, end of the WP7 session
+
+**Done and committed:** WP0, WP1, WP2, WP3, WP4, WP5, WP-T, WP6, **WP7** (`5045567`).
+
+**Open, in the order they probably want doing:**
+
+| package | state | note |
+|---|---|---|
+| **WP8** `nanochat-grpo.ipynb` | ⬜ not started | **next.** Stale against WP7 — read its numbered list first |
+| **WP-C** `nanochat-chat.ipynb` | ⚠ **reopened** | was ✅ done 2026-09-20; WP7's template change invalidated five cells and its §8 |
+| WP-N | ⬜ not started | only `text-transformer.ipynb` is genuinely stuck; scope corrected 2026-09-27 |
+| WP9 `minisweagent.ipynb` | ⬜ not started | independent of the nanochat chain |
+| WP10 `index.ipynb` rewrite | ⬜ not started | do last; WP7 already refreshed its SFT line |
+| WP-R checkpoint release | ⬜ deferred | near delivery |
+
+**Branch `revision2026` is one commit ahead of `origin/revision2026`** — WP7 is committed
+locally but **not pushed**. Push it, or confirm it should stay local, before starting WP8.
+
+**Artifacts on disk that WP8 needs** (none are in git; all are gitignored by `*.pkl`,
+`*.npy`, `*.npz`):
+
+| file | what it is | cost to rebuild |
+|---|---|---|
+| `checkpoints/nanochat_best.pkl` | pretrained, val 0.8126 @ 63,000 | ~2 h (`nanochat.ipynb`) |
+| `checkpoints/nanochat_sft_best.pkl` | **SFT policy, step 1,000, val 0.6533 — start GRPO here** | ~12 min |
+| `checkpoints/nanochat_sft_checkpoint.pkl` | SFT last step 1,986, val 0.6639, *deliberately overfit* | same run |
+| `checkpoints/sft_examples.npz` | 11,620 encoded SFT examples; last 1,024 are the held-out set | 6.7 min |
+| `checkpoints/bpe_tokenizer_train.pkl` + `train_tokens.npy` | tokenizer + 1.04B-token corpus | ~16 min |
+| `data/TinyStories-Instruct-valid.txt` | 26.9 MB | `python download_data.py` |
+| `checkpoints/sft_budget_probe.json` | **committed** — the S2 budget experiment's raw curve | 15 min |
+
+**Untracked files that are not mine to commit, left alone:** `nanochat-review.md` (Yoav's
+call: the review stays untracked), `.codex`, `slurm-download-data.sh`.
+
+**Environment:** `~/.pixi/bin/pixi run …`; both A4000s idle at the end of the session; no
+background jobs left running. `TF_CPP_MIN_LOG_LEVEL=3` to silence XLA chatter,
+`PYTHONPATH=.` when running scripts that import `nanochat_model` or `bpe`.
+
+**Two process lessons from WP7, both already folded into the rules below:**
+- **Rehearse every code path on a tiny subset, then execute once.** Two minutes of rehearsal
+  saved a 20-minute run from failing mid-way.
+- **Estimate executed notebook size before running**, not after: `(source chars + text
+  output + ~30,000 per figure) / 3.4` ≈ tokens. WP7 lost three executions to getting the
+  size rule backwards — see the corrected note in WP-N.
+
+---
+
 ## Decisions taken (Part E, answered by Yoav 2026-09-20)
 
 | # | Question | Decision |
@@ -1236,37 +1283,51 @@ to what this plan and `CLAUDE.md` previously implied — see WP-N below.
 ---
 
 ### WP8 — `nanochat-grpo.ipynb`  ⬜ not started — **WP7 changed its inputs; read this first**
-Depends on WP7, which is now done. Decided: **inner epochs K>1** so clipping engages.
+Depends on WP7, which is done and committed (`5045567`). Decided: **inner epochs K>1** so
+clipping engages.
 
-**Four things WP7 settled underneath this notebook.** WP7's own checklist flagged the risk
+**Five things WP7 settled underneath this notebook.** WP7's own checklist flagged the risk
 ("if SFT trains on one template and GRPO prompts with another, GRPO starts from a policy
 that has never seen its own template"). WP7 resolved the SFT side; the GRPO side is still
 stale, and the mismatch is now concrete rather than hypothetical.
 
 1. **Its checkpoint is invalid and its starting point moved.** Start from
-   `checkpoints/nanochat_sft_best.pkl` (step 993, response loss 0.6528) — *not*
-   `nanochat_sft_checkpoint.pkl`, which is what cell 4's prose currently names, and not the
-   pre-WP6 file, which was fitted to the old tokenizer and the old attention.
+   `checkpoints/nanochat_sft_best.pkl` — **step 1,000, held-out response loss 0.6533**.
+   *Not* `nanochat_sft_checkpoint.pkl`, which cell 4's prose currently names: that file is
+   now the deliberately-**overfit** last step (1,986, val 0.6639), kept only so the notebook
+   can measure best-vs-overfit. And not any pre-WP6 file, which was fitted to the old
+   tokenizer and the old attention.
 2. **The prompt template changed.** GRPO cell 9 builds
    `f"[INST] Write a story about a {animal} in exactly {n} sentences. [/INST]"`. The SFT
    policy has never seen `[INST]`; it has seen `build_prompt(fields)` —
-   `<|endoftext|>Words: …\nFeatures: …\nStory:\n`. Import or reproduce `build_prompt`
-   rather than inventing a third format. Cells 8 and 9 both need rewriting.
+   `<|endoftext|>Words: …\nFeatures: …\nStory:\n`. Reproduce `build_prompt` from
+   `nanochat-sft.ipynb` rather than inventing a third format. Cells 8 and 9 both need
+   rewriting. Prompts should be built from held-out TinyStories-Instruct records, which
+   `checkpoints/sft_examples.npz` already holds encoded (see 5).
 3. **The reward changed, and it is now a function WP7 defines.** GRPO's current reward is
-   "1 if the response has exactly N sentences". WP7's task is word-constraint satisfaction
-   and its metric is `words_present`, which is what the SFT policy was actually trained
-   toward. Using a sentence-count reward would optimise a behaviour SFT never installed.
-   **But do not adopt `words_present` unchanged:** it matches on word boundaries, so `jump`
-   does not match "jumping", and a committed SFT sample uses "jumping" four times and scores
-   zero. That is tolerable for *reporting* (the ceiling is measured under the same rule) and
-   dangerous as a *reward*, because the policy optimises against the matcher and every
-   weakness becomes a strategy. Substring matching is not the fix — it counts `war` inside
-   "warm". Stemming, or accepting a shared prefix of ≥4 characters, is the place to start;
-   whatever is chosen, re-measure the ground-truth ceiling under the same rule.
-4. **The headroom is measured, so the GRPO claim has a target.** SFT reaches 0.467 words
-   found against a 0.686 ceiling (0.090 vs 0.332 on all-three). That gap is what GRPO exists
-   to close, and it is large enough to be visible. The 0.005-nat noise floor still applies to
-   any loss claim.
+   "1 if the response has exactly N sentences". WP7's task is word-constraint satisfaction,
+   measured by `words_present`, which is what the SFT policy was actually trained toward; a
+   sentence-count reward would optimise a behaviour SFT never installed.
+   **Do not adopt `words_present` unchanged.** It matches on word boundaries, so `jump` does
+   not match "jumping" — which is why the ground-truth ceiling is 0.686 rather than the
+   ~0.98 a substring test gives. Tolerable for *reporting*, because the ceiling is scored
+   under the same rule; dangerous as a *reward*, because a policy turns every weakness in a
+   matcher into a strategy. Substring matching is not the fix either — it counts `war`
+   inside "warm". Stemming, or a shared-prefix rule, is the place to start, and **whatever
+   is chosen, re-measure the ground-truth ceiling under the same rule** or the target moves
+   without anyone noticing.
+4. **The headroom is measured, so the GRPO claim has a target.** SFT reaches **0.467 ±0.018
+   words found against a 0.686 ceiling** (0.109 vs 0.332 on all-three), from a pretrained
+   baseline of 0.092. That gap is what GRPO exists to close and it is large enough to see.
+5. **There is a reproducibility floor on the reward, and nobody has measured it.** Two
+   executions of `nanochat-sft.ipynb` whose computational code was byte-identical produced
+   constraint-satisfaction numbers differing by up to **0.013** (pretrained 0.094/0.092,
+   SFT-best 0.454/0.467) while the training log was bit-identical and the ground-truth row
+   unchanged. Isolated generation *is* bit-reproducible across processes, so the cause is
+   somewhere in the full-notebook path and **was not identified** — see `runs.md` S1,
+   finding 3. Consequence for WP8: an RL improvement smaller than ~0.03 on this metric is
+   not evidence until that floor is measured, the way N1 measured the loss floor. Do that
+   first; it is two runs of the evaluation cell.
 
 **`nanochat-chat.ipynb` (WP-C) has the same staleness**: cells 9, 14, 16, 18, 22 hard-code
 `[INST]`, cell 0's table names `nanochat_sft_checkpoint.pkl`, and cell 15's prose explains a
@@ -1335,7 +1396,16 @@ unless sampling is fixed first.
 
 ---
 
-### WP-C — `nanochat-chat.ipynb`  ✅ done 2026-09-20 (branch `wp-c-chat-notebook`)
+### WP-C — `nanochat-chat.ipynb`  ⚠ **reopened 2026-09-27 by WP7** (was ✅ done 2026-09-20, branch `wp-c-chat-notebook`)
+
+> **Do not treat this package as finished.** WP7 changed the chat template, the reward and
+> the SFT checkpoint name, and this notebook is stale in five code cells (9, 14, 16, 18, 22
+> hard-code `[INST] … [/INST]`), in cell 0's prerequisites table (`nanochat_sft_checkpoint.pkl`
+> is now the deliberately-overfit last step; it wants `nanochat_sft_best.pkl`), and in cell
+> 15's prose, which explains a convention the SFT model no longer uses. Its §8 "what is
+> missing" entry about `[INST]` being shredded by BPE is now **fixed upstream** rather than a
+> known weakness, so that section needs rewriting rather than patching. It also still pastes
+> the model instead of importing `nanochat_model`. The notebook must be re-executed after.
 **New package, not in the review.** Yoav 2026-09-20: convert `nanochat_chat.py` into a
 notebook, placed after GRPO and before the agent notebook. The script is deleted.
 
