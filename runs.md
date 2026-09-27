@@ -1189,3 +1189,154 @@ hard way:
 - **Run the variants concurrently, one per GPU.** Two variants cost one variant's wall-clock.
 - **Budget three seeds** whenever the expected effect is near the 0.005 bar; one seed is only
   defensible when the effect is ~200x the noise, as in `l2` vs `rms`.
+---
+
+## S1 — SFT on TinyStories-Instruct · 2026-09-27 · **the task swap worked: 0.092 → 0.467 constraint satisfaction**
+
+WP7's committed run. New ID prefix `S` for the SFT notebook; `N*` is the pretraining series.
+
+The package's premise was that `nanochat-sft.ipynb`'s old task — continue a story from its
+first sentence — could not demonstrate anything, because the pretrained model already does
+it fluently (review finding 9.1). Replacing it with constrained generation from
+TinyStories-Instruct was supposed to make the before/after visible. It does.
+
+**The premise, verified before any code was written.** Prompted with
+`<|endoftext|>Words: sad, jump, big\nFeatures: Dialogue, BadEnding\nStory:\n`, the pretrained
+checkpoint writes dialogue in which **`Words` and `Bad` are character names** ("So, Words,
+Bad and Papa all stood in the same..."). It does not read the headers as instructions at
+all. That failure is cell 9 of the notebook, generated before training so it cannot be
+re-shot to suit the conclusion.
+
+| | |
+|---|---|
+| dataset | `TinyStories-Instruct-valid.txt`, 26.9 MB, 25,028 records |
+| usable | 17,466 have the instruction-then-story shape; **11,620 examples** after requiring `Words:` |
+| dropped | 5,844 no `Words:`; **2** for a character outside the closed vocabulary; 0 for not fitting |
+| build cost | **6.7 min** of pure-Python BPE, cached to `checkpoints/sft_examples.npz` |
+| shape | prompt mean 34 tokens, response mean 209 (min 100, max 237, 90% in 186–229) |
+| split | last **1,024** examples held out, fixed |
+| budget | 6 epochs = **1,986 steps** × 32, lr 3e-5, no early stopping |
+| wall-clock | **4.6 min** training on one A4000, plus 7.9 min for 768 evaluation generations |
+
+**Held-out response loss 0.8437 → 0.6533** (best, step 1,000 = 3.0 epochs), improvement
+**0.1903** against the 0.005-nat noise floor from N1/N2. The last step (1,986) ends at
+0.6639, **+0.0105 worse than the best** — the budget deliberately overshoots so the curve
+turns inside the committed plot.
+
+**Constraint satisfaction** (n = 256 held-out prompts, temperature 0.8, shared sampling
+keys; ± is one standard error over prompts):
+
+| model | words found | all three | tokens |
+|---|---|---|---|
+| pretrained | 0.092 ±0.011 | 0.004 | 210 |
+| **SFT, best (step 1,000)** | **0.467 ±0.018** | 0.109 | 207 |
+| SFT, last (step 1,986, overfit) | 0.490 ±0.017 | 0.113 | 208 |
+| ground truth (ceiling) | 0.686 ±0.017 | 0.332 | 207 |
+
+**No forgetting at this learning rate.** Plain next-token loss on held-out pretraining text
+went **0.8340 → 0.8247** — slightly *better*. Not a general result; it says `3e-5` was
+conservative and the domains overlapped.
+
+### The budget question, answered by experiment (the S2 probe below)
+
+Yoav asked whether a longer SFT — "30 min?" — would help. It would not, and the run that
+settles it is worth more than the answer.
+
+### Three results that are more interesting than the headline
+
+**1. The two metrics disagree about overfitting.** Held-out loss says the last-step
+checkpoint is clearly worse (+0.0105, twenty times the noise floor). Constraint satisfaction
+says it is *slightly better* (0.490 vs 0.467, about 1.3 standard errors — i.e. not
+reliably anything). So the quantity being optimised degraded while the behaviour we actually
+want sat still. **Watching only the behavioural number would have concluded six epochs was
+fine.** This is now the notebook's argument for why best-checkpoint saving is by loss:
+loss is measured on all 1,024 examples and resolves 0.001; the behavioural metric at n=256
+cannot resolve 0.03. Precision is a reason to prefer a metric, not only relevance.
+
+**2. The word matcher is stricter than it looks, and it is WP8's reward.** `words_present`
+matches on word boundaries, so `jump` does not match "jumping". That is why the ground-truth
+ceiling is 0.686 and not the ~0.98 a substring test gives. The comparison stays fair — the
+ceiling is scored under the same rule — but **WP8 must revisit this before optimising against
+it**, because a policy turns every weakness in a matcher into a strategy. Substring matching
+is not the fix either: it counts `war` inside "warm". Stemming, or a shared-prefix rule, is
+the place to start; re-measure the ceiling under whatever rule is chosen.
+
+**3. The coverage metric is not reproducible to better than ~0.013 between full runs, and I
+could not explain why.** Two executions of the notebook whose *computational* code was
+byte-identical (only a code comment and two markdown cells differed) produced
+pretrained 0.094/0.092, SFT-best 0.454/0.467, SFT-last 0.488/0.490 — while the ground-truth
+row (pure data) was identical, the training log was bit-identical apart from wall-clock
+seconds, and the loss table matched to four decimals. Isolated generation **is** reproducible:
+the same 64 prompts from the same checkpoint with the same keys gave byte-identical output
+twice within one process and again in a second process. So the variation appears only in the
+full-notebook path, where training runs first; the likeliest cause is XLA autotuning state,
+but **this is a hypothesis, not a measured conclusion.** Practical consequence: the printed
+± understates total uncertainty by roughly a factor of √2, and any WP8 reward comparison
+needs a run-to-run floor established the same way N1 established the loss floor.
+
+### Method notes worth carrying forward
+
+**Rehearse first, execute once.** Every code path was tried on a 900-example subset (27
+steps, 16 generations, plot, checkpoint round-trip) before the real run — two minutes, and it
+confirmed the signal was real (coverage 0.083 → 0.208 after 27 steps) before committing to a
+20-minute execution. WP6's lesson was "review *during* the run, because `nbconvert --inplace`
+overwrites edits made while it is going"; this is the cheaper form of it.
+
+**Estimate the executed file size before running, not after.** This package burned three
+executions on notebook size. The arithmetic that would have avoided it:
+`(source chars + expected text output + ~30,000 for one figure) / 3.4` ≈ tokens, where 3.4
+chars/token is measured, not assumed. Two corrections to what `CLAUDE.md` currently implies:
+a figure costs ~9,000 tokens and **its cost is dominated by physical dimensions** — dpi and
+point count barely move it (downsampling a 1,962-point line to 199 saved 4 KB of 38 KB) —
+and, more importantly, **the executed size is not the constraint that matters.** Every
+notebook in this repo exceeds the 25k `Read` limit when executed (`nanochat.ipynb` 152k
+tokens, `sets.ipynb` 72k, `GRU.ipynb` 26k); what keeps a notebook editable is its **source**
+size, because the way back is always clear-outputs → edit → re-execute. This notebook's
+source is 15.0k tokens; its executed form is 26.3k, the second smallest in the repo.
+
+**A watcher shell built as `until ! pgrep -f "nbconvert.*X"; do sleep; done` matches its own
+command line** and waits forever, reporting a finished run as still going. Cost here: a run
+that completed at 00:50 was still being reported as running at 07:14. Use a sentinel file
+(`echo $? > DONE`) instead.
+
+---
+
+## S2 — how long should SFT run? · 2026-09-27 · **validation bottoms at 3 epochs; 15 epochs buys nothing**
+
+Yoav asked whether to run SFT for ~30 minutes instead of ~3. Rather than guess, a standalone
+probe trained the same setup for **15 epochs (4,965 steps, 15.0 min on one A4000)**, scoring
+the full 1,024-example validation set every 100 steps and constraint satisfaction (n=64)
+every 993.
+
+| steps | epochs | train | val | words found | all three |
+|---|---|---|---|---|---|
+| 993 | 3.0 | 0.574 | 0.6533 *(minimum at step 1,000)* | 0.427 | 0.094 |
+| 1,986 | 6.0 | 0.486 | 0.6641 | 0.427 | 0.062 |
+| 2,979 | 9.0 | 0.435 | 0.6741 | 0.411 | 0.062 |
+| 3,972 | 12.0 | — | — | 0.479 | 0.078 |
+| 4,965 | 15.0 | — | — | 0.479 | 0.109 |
+
+**Answer: no.** Validation loss reaches its minimum of **0.6533 at step 1,000** and rises
+monotonically thereafter, while training loss keeps falling (0.574 → 0.426 by step 2,400).
+Thirty minutes would be ~10,000 steps, roughly ten times past the optimum.
+
+**And constraint satisfaction does not improve either** — it wanders between 0.411 and 0.479
+across a five-fold range of training, which at n=64 (SE ≈ 0.04) is flat. My first reading of
+this table called the all-three column a *degradation* (0.094 → 0.062); the fourth and fifth
+points (0.078, 0.109) show that was noise, and the claim was withdrawn before it reached the
+notebook. **Two points are not a trend when the standard error is 0.04.**
+
+That flatness is the useful part, and it is the strongest available argument for GRPO: past
+the loss minimum, more imitation buys neither likelihood nor behaviour. The gap to the 0.686
+ceiling is not a budget problem.
+
+**What changed in the notebook as a result:** the budget went from 3 epochs to **6** — not to
+train better, but so the committed plot shows the turn. Three epochs left the curve still
+falling, which made best-checkpoint saving look like dead machinery (best = last step) and
+forced the prose to admit it had never seen the overfitting it was sized to avoid. Six epochs
+puts the minimum mid-plot at a cost of ~3 minutes, and produces the best/last comparison that
+finding 1 in S1 rests on.
+
+**Reproducibility note:** the probe reproduced the notebook's validation curve step for step
+(0.6948 @100, 0.6772 @200, 0.6686 @300, … 0.6533 @1,000) from a separate process and script,
+which is a stronger determinism check on the training path than anything in S1.

@@ -80,6 +80,17 @@ Repair by adding `"execution_count": null,` and `"outputs": [],` to the code cel
 
 **3. `NotebookEdit` clears a cell's outputs when it rewrites the source**, and any `sed` on a notebook invalidates the tool's read state (forcing a re-read). When a notebook is going to be re-run anyway, clear all outputs first (`jupyter nbconvert --ClearOutputPreprocessor.enabled=True --inplace`) — re-reads then cost a fraction as much, and the notebook is not left half-stripped.
 
+**4. A notebook can grow too large for `NotebookEdit` to touch at all — but check *which*
+size you are over.** The limit that matters is on the **stripped source**, because the route
+back is always clear outputs → edit → re-execute. *Every* notebook in this repo is over 25k
+tokens when executed (`nanochat.ipynb` 152k, `sets.ipynb` 72k, `nanochat-sft.ipynb` 26k);
+that is normal and not a problem. Only `text-transformer.ipynb`, whose stripped source is
+itself 25.5k, has no route back. Measured constants for estimating *before* a run:
+**~3.4 characters per token** for an executed `.ipynb`, and **~9,000 tokens per figure,
+dominated by the figure's physical dimensions** — dpi and point count barely move it, so
+budget for a figure rather than trying to shrink one. (WP7 lost three executions to getting
+this backwards.)
+
 **4. A notebook can grow too large for `NotebookEdit` to touch at all.** `NotebookEdit` requires a `Read` in the same session; `Read` refuses a file over 25k tokens, and it has no working offset/limit for `.ipynb` — it sizes the whole file first. `Edit` refuses `.ipynb` outright. So past that threshold there is **no tool path to the edit**, and the only ways back are to shrink the source or to edit through the `nbformat` API and validate hard afterwards.
 
 Measured 2026-09-21 (runs.md W6): `text-transformer.ipynb` is **25.5k tokens with every output stripped** — the prose alone is over — and ~28.7k once executed, the extra 15k being 44 KB of base64 PNG for one loss curve. Assume roughly 3 characters per token: a 75 KB `.ipynb` is already at the limit.

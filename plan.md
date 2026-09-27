@@ -211,7 +211,7 @@ cluster.
 | WP6 QK-norm A/B, 2 k steps × 2 | **~30 min** |
 | WP6 nanochat retrain, 50 k steps × 32 × 256 = 410 M tokens | **3.5–7 h** |
 | WP-T retokenise, if the train split is used | 2.23 GB download + **1–3 h** pure-Python encode |
-| WP7 SFT, 10 k steps × 32 | **< 1 h**; real costs are BPE-encoding the dataset (572 s *measured*) and un-jitted `generate` (407 s for 200 tokens *measured*) |
+| WP7 SFT | **~19 min total, measured (S1)**: 6.7 min BPE-encoding the dataset (cached after, so ~12 min on re-runs), **4.6 min** for 1,986 training steps × 32, 7.9 min for 768 evaluation generations. The old estimate's 407 s per 200 tokens was the *un-jitted* `generate`; WP6's fixed-buffer version is ~0.6 s per ~200-token generation. The 15-epoch budget probe (S2) cost a further 15 min. |
 | WP8 GRPO as-is | **1 h 42 m** *measured* |
 | WP8 GRPO with the plan's additions, sampling unfixed | **8–12 h** |
 | WP8 GRPO with `sample_group` batched and jitted | roughly 20× better; re-measure |
@@ -596,6 +596,27 @@ in `40bf38d` and, for the C7 half, **not yet** — see the open item below.
 
 ### WP-N — Get the character notebooks back under the edit limit  ⬜ not started
 Not in the review; created 2026-09-21 by a tooling constraint that now blocks WP2.
+
+> **Scope corrected 2026-09-27 (WP7).** The constraint is on a notebook's **source**, not on
+> its executed size, and this section's title has misled at least one session into trying to
+> shrink the wrong thing. **Every notebook in this repo exceeds 25k tokens when executed** —
+> `nanochat.ipynb` 152k, `sets.ipynb` 72k, `bpe-tokenizer.ipynb` 36k, `RNN.ipynb` 31k,
+> `text-transformer.ipynb` 26k, `GRU.ipynb` 26k, `nanochat-sft.ipynb` 26k — and that is fine,
+> because the route back is always **clear outputs → edit → re-execute**. That route fails
+> only when the *stripped* source is itself over the limit, which is exactly and only
+> `text-transformer.ipynb` at 25.5k. WP7 spent three executions shrinking a figure before
+> checking what the other notebooks actually do; the check takes one command.
+>
+> Two measured facts for whoever sizes a notebook next:
+> - **~3.4 characters per token** for an executed `.ipynb` (measured, not assumed: 88,827
+>   chars → 26,126 tokens). Estimate before running: `(source + text output + ~30,000 per
+>   figure) / 3.4`.
+> - **A figure costs ~9,000 tokens and its cost is dominated by physical dimensions.**
+>   Downsampling a 1,962-point line to 199 saved 4 KB of 38 KB; dropping dpi 72 → 68 and
+>   0.2 inches of height saved another 4 KB. There is no cheap win — budget for it, or plot
+>   nothing. (This supersedes the "trim the figure" reading of the W6 note below, which
+>   correctly observed that `dpi` did not help but attributed it to base64 rather than to
+>   the fact that pixels are the cost.)
 
 `text-transformer.ipynb` is **25.5k tokens of source with every output stripped**, and
 ~28.7k once executed. `Read` refuses over 25k and has no working offset for `.ipynb`;
@@ -1084,6 +1105,8 @@ the loss the old run needed 23,500 for. **E6 confirmed; 8.1 closed.**
 `import nanochat_model`. WP6 *produces* the module; those three notebooks are being
 rewritten in their own packages and must regenerate their checkpoints against the new
 architecture anyway, so doing the import surgery here would be work done twice.
+**Discharged for `nanochat-sft.ipynb` by WP7** (2026-09-27); `nanochat-grpo.ipynb` and
+`nanochat-chat.ipynb` still paste the model.
 
 **Code review done (N3), and it paid for itself.** Run *during* the retrain rather than
 after, which made the fixes free — the first retrain was killed at ~20 min and restarted on
@@ -1109,72 +1132,147 @@ tokens of source — under the 25k limit but with little headroom), commit, and 
 **second** review dimension — every number in the committed outputs checked against the
 notebook's own claims — before declaring the package done.
 
-### WP7 — `nanochat-sft.ipynb`  ⬜ not started — **unblocked 2026-09-27, and WP6 changed its inputs**
-Task decided: **TinyStories-Instruct**. WP6 is done, so everything this package depends on exists.
+### WP7 — `nanochat-sft.ipynb`  ✅ **done 2026-09-27** — 0.8437 → 0.6533 nats/token, constraint satisfaction 0.092 → 0.467 against a 0.686 ceiling
+Task: **TinyStories-Instruct**, as decided in E3. Numbers in `runs.md` **S1**; the budget
+experiment that set the epoch count is **S2**. Reviewed adversarially (below) before commit.
 
-**Read this before starting — four things WP6 changed underneath this notebook:**
+**The notebook was rewritten, not patched**: 20 cells → 28, only four section headings
+surviving. The old source was 5.6k tokens of which a third was a pasted model copy; the new
+one is 15.0k tokens of which none is.
 
-1. **Its checkpoint is invalid.** `checkpoints/nanochat_sft_*.pkl` were fitted to the old
-   tokenizer *and* the old attention. They must be regenerated, not resumed. The pretrained
-   checkpoint they start from is the new `checkpoints/nanochat_best.pkl` (val 0.8126).
-2. **`nanochat_model.py` now exists**, generated by `nanochat.ipynb` (17 functions). Item
-   B2/9.3 below is now a straight import; `load_checkpoint` returns a **dict**.
-3. **The tokenizer is `checkpoints/bpe_tokenizer_train.pkl`** (1024 = 104 chars + 919 merges
-   + `<|endoftext|>` at id 1023), *not* `bpe_tokenizer.pkl`. Loading the wrong one silently
-   produces garbage ids — assert as `nanochat.ipynb` does.
-4. **`<|endoftext|>` exists now**, so the chat format can use a reserved token for turn
-   boundaries rather than `[INST]` text that BPE shreds. `nanochat-chat.ipynb` §8 lists this
-   as a known weakness; the decision below can now fix it instead of inheriting it.
+- [x] **9.1 — the task swap, premise verified rather than assumed.** Prompted with the new
+      template, the pretrained model writes dialogue in which **`Words` and `Bad` are
+      character names**; it does not read the headers as instructions at all. That
+      generation is cell 9, produced *before* training. The old story-continuation task
+      could not have produced such a picture, which was the review's central finding.
+- [x] **B2/9.3 — the pasted model cell is gone**, replaced by `from nanochat_model import`.
+      This also disposes of 9.9 (the `apply_rope(Q,c,s)/norm(Q)` reader trap), which lived
+      only in the pasted copy — confirmed by grep, not assumed.
+- [x] **9.4 — honest budget.** 6 real epochs over a permutation = 1,986 steps; fixed
+      1,024-example validation set scored in full every 100 steps; no early stopping. The
+      old run was 80 steps shipped / 160 run, triggered by `patience=4` on a single random
+      batch of 8.
+- [x] **9.5** output present; **9.6** valid-split choice stated with the V1/V2 caveat;
+      **9.7** per-token vs per-example normalisation; **9.8** prompt-mask ablation kept and
+      promoted to Exercise 1 ★.
+- [x] **B6** — title cell names all four undistributed prerequisites and prices them.
+- [x] Two-machines-in-one-notebook fixed by construction: one execution, `JAX 0.9.2 | gpu`.
+- [x] `download_data.py`, `README.md` and `index.ipynb` updated.
 
-**Also available and worth reusing:** the fixed-budget/no-early-stopping pattern (B5), the
-`fold_in(root_key, step)` batching so a resumed run is identical to an uninterrupted one, and
-the held-out-bpc-against-baselines habit. And the noise floors WP6 measured — **0.002 nats
-between bit-identical re-runs, 0.005 across seeds** — are the bar for any before/after claim
-in this notebook, which is exactly what finding 9.4 says the committed run got wrong.
+**The chat-format decision, which WP8 and WP-C inherit.** Template is
+`<|endoftext|>Words: …\nFeatures: …\nStory:\n` + response + `<|endoftext|>`, built by
+`build_prompt(fields)`. Four choices, each argued in the prose: `<|endoftext|>` as turn
+boundary rather than `[INST]` (a reserved id BPE cannot shred, and one the pretrained model
+already reads as a boundary — *only possible since WP-T put the separator in the
+vocabulary*); `Summary:`/`Random sentence:` dropped (the summary triples the prompt, 35 →
+115 tokens of a 256-token window, and both describe the whole story when only its opening
+fits); `Words:` kept because it is checkable without a judge; canonical field order so a
+later notebook can reconstruct the template exactly.
 
-- [ ] Replace story-continuation with `roneneldan/TinyStories-Instruct` — the pretrained model
-      demonstrably fails it, so the before/after in §5 shows a real difference (9.1)
-- [ ] Replace the pasted model cell with `from nanochat_model import ...` (B2, 9.3)
-- [ ] Honest fixed budget with a **stated target** — the committed run is ~80 steps over 640
-      of 24,124 examples, and its val improvement (0.985 → 0.870) was measured on a **single
-      random batch of 8**, i.e. inside the noise. Fix the val set and do a full pass; say how
-      many steps and why (9.4, and the same disease as 10.13 one notebook earlier)
-- [x] **Verified 2026-09-20.** The HF repo is `roneneldan/TinyStoriesInstruct` — **no
-      hyphen in the repo name**, unlike the review's `TinyStories-Instruct`, which 404s.
-      Files inside it *are* hyphenated:
-      `TinyStories-Instruct-train.txt` (2.66 GB) and `TinyStories-Instruct-valid.txt`
-      (26.9 MB). Direct URL pattern:
-      `https://huggingface.co/datasets/roneneldan/TinyStoriesInstruct/resolve/main/<file>`
-      Use the **valid** file (26.9 MB) as the default, consistent with the corpus rule
-      elsewhere; no `datasets` dependency needed since these are plain text
-- [ ] Add the valid file to `download_data.py`
-- [ ] Format, for the prompt template: each record has `Features:` (optional — tags like
-      Dialogue, BadEnding, MoralValue, Foreshadowing, Conflict), `Words:` (3 vocabulary
-      items the story must contain), `Summary:`, `Story:`, and sometimes a random sentence
-      that must appear verbatim. The pretrained model demonstrably cannot satisfy these
-      constraints, which is the whole point of the swap (9.1)
-- [ ] **Decide the chat format here, because WP8 depends on it.** GRPO hard-codes
-      `[INST] … [/INST]`; TinyStories-Instruct ships `Features:/Words:/Summary:/Story:`.
-      If SFT trains on one and GRPO prompts with the other, GRPO starts from a policy that
-      has never seen its own template
-- [ ] The committed outputs are from **two machines** — cell 2 shows `JAX 0.9.2 | cpu` with
-      a macOS path while cells 13/16 are CUDA. 8.7 catches this for nanochat; nothing
-      catches it here
-- [ ] Re-run so the key comparison cell actually has output (9.5)
-- [ ] State explicitly that SFT uses the valid split because pretraining used train (9.6)
-- [ ] Two sentences on per-example vs per-token loss normalisation (9.7)
-- [ ] Keep Exercise 3; consider promoting it to a two-cell ablation (9.8)
-- [ ] **B6 consequence:** state at the top that this notebook requires
-      `checkpoints/nanochat_checkpoint.pkl`, which is not distributed — the student must
-      produce it by running `nanochat.ipynb`, and roughly how long that takes
-- [ ] 9.9 (the `apply_rope(Q,c,s)/norm(Q)` reader trap) needs no work here — the line lives
-      in the pasted model cell, which the import above deletes. Confirm it is gone rather
-      than editing it
+**Responses are story *openings*.** Median story ~360 tokens against a 256 window, so ~3.5%
+fit whole. Truncated at a sentence boundary and terminated with `<|endoftext|>` so the model
+learns to stop. Said plainly in the notebook rather than left for the reader to infer.
+
+### What the adversarial review found (two dimensions, both run before commit)
+
+**Numbers/claims dimension — four S1 errors, all mine, all now fixed:**
+1. "the response is anywhere from 30 to 230 tokens" — actually **100 to 237, with 90%
+   between 186 and 229**. I had read the floor off `min_response=32`. This was load-bearing:
+   the per-token-vs-per-example normalisation argument rested on a wide length distribution,
+   and the real spread is 1.2×. Rewritten to say the opposite — truncation *homogenises*
+   lengths, so the choice barely matters here — which is a better point than the one I had.
+2. Three sentences describing GRPO's reward, prompt and starting checkpoint **as fact** when
+   the committed GRPO notebook does none of them. Rewritten as a specification, explicitly
+   labelled as such.
+3. "the committed run trained for 80 steps" — it **ran to 160 of a 200-step budget and
+   shipped step 80**. Early stopping cut 20%, not "almost immediately".
+4. "about 1% of stories fit" — **3.58%**, ~420 examples. Argument survives, number was 3.5× off.
+
+Plus S2/S3: "three minutes per pass" (it is one), "every downstream notebook imports the
+module" (only this one does), a miscounted "jumping four times", median 370 → 357, "eleven
+thousand" trained on (10,596), the noise-floor provenance, and two missing prerequisites.
+
+**Code-correctness dimension — no S1 bug; the index arithmetic was verified three ways**
+(algebraically, structurally over all 11,620 cached rows, and numerically against a
+hand-written loop to 4e-7), including a bit-level test that randomising every padding token
+leaves the loss unchanged. It found **one real S2 bug**: Exercise 1 told students to use
+`mask = 1 - mask`, which puts weight on the **padding** as well and would spend ~7% of the
+objective teaching the model to predict `<|endoftext|>` after `<|endoftext|>`. Fixed with an
+explicit prompt mask and a note about why the `-1` is there. Plus S3s: "seen exactly three
+times" (4 examples per epoch fall outside the last full batch), an `evaluate` docstring that
+overpromised, a misleading `min_response` name, an over-strict vocabulary check that
+char-tested `<|endoftext|>`, an `Exercise 6` caveat about the 550 window-filling rows, and a
+`setdefault` that recompiled a regex on every call.
+
+**Both reviewers were required to state what they checked and found correct**, and both did
+at length. That half is what made the correctness review usable: it tells you which parts do
+not need re-checking next time.
+
+### Three results worth carrying into WP8
+
+1. **The two metrics disagree about overfitting.** Loss says the last-step checkpoint is
+   clearly worse (+0.0105); constraint satisfaction says it is slightly *better* (0.490 vs
+   0.467, ~1.3 SE). Watching only the behavioural number would have called six epochs fine.
+2. **`words_present` is stricter than it looks** — `jump` does not match "jumping", which is
+   why the ceiling is 0.686 rather than ~0.98. Fair for reporting; **dangerous as a reward**.
+3. **The coverage metric wobbles ~0.013 between full-notebook runs** whose computational code
+   is byte-identical, while isolated generation is bit-reproducible across processes.
+   Mechanism unresolved — see S1, finding 3. WP8 needs a run-to-run floor for its reward.
+
+**Artifacts.** `checkpoints/nanochat_sft_best.pkl` (step 1,000) is **what downstream should
+load**; `nanochat_sft_checkpoint.pkl` is the deliberately-overfit last step, kept so the
+notebook can measure the difference. `checkpoints/sft_examples.npz` caches the 6.7-minute
+encode; `*.npz` is already gitignored.
+
+### Method corrections this package forced
+
+**Rehearse first, execute once.** Every code path on a 900-example subset before the real
+run: two minutes, and it confirmed the signal was real before a 20-minute execution.
+
+**Estimate executed notebook size *before* running.** This package burned three executions on
+size. `(source chars + text output + ~30,000 per figure) / 3.4` ≈ tokens. And two corrections
+to what this plan and `CLAUDE.md` previously implied — see WP-N below.
 
 ---
 
-### WP8 — `nanochat-grpo.ipynb`  ⬜ not started
-Depends on WP7. Decided: **inner epochs K>1** so clipping engages.
+### WP8 — `nanochat-grpo.ipynb`  ⬜ not started — **WP7 changed its inputs; read this first**
+Depends on WP7, which is now done. Decided: **inner epochs K>1** so clipping engages.
+
+**Four things WP7 settled underneath this notebook.** WP7's own checklist flagged the risk
+("if SFT trains on one template and GRPO prompts with another, GRPO starts from a policy
+that has never seen its own template"). WP7 resolved the SFT side; the GRPO side is still
+stale, and the mismatch is now concrete rather than hypothetical.
+
+1. **Its checkpoint is invalid and its starting point moved.** Start from
+   `checkpoints/nanochat_sft_best.pkl` (step 993, response loss 0.6528) — *not*
+   `nanochat_sft_checkpoint.pkl`, which is what cell 4's prose currently names, and not the
+   pre-WP6 file, which was fitted to the old tokenizer and the old attention.
+2. **The prompt template changed.** GRPO cell 9 builds
+   `f"[INST] Write a story about a {animal} in exactly {n} sentences. [/INST]"`. The SFT
+   policy has never seen `[INST]`; it has seen `build_prompt(fields)` —
+   `<|endoftext|>Words: …\nFeatures: …\nStory:\n`. Import or reproduce `build_prompt`
+   rather than inventing a third format. Cells 8 and 9 both need rewriting.
+3. **The reward changed, and it is now a function WP7 defines.** GRPO's current reward is
+   "1 if the response has exactly N sentences". WP7's task is word-constraint satisfaction
+   and its metric is `words_present`, which is what the SFT policy was actually trained
+   toward. Using a sentence-count reward would optimise a behaviour SFT never installed.
+   **But do not adopt `words_present` unchanged:** it matches on word boundaries, so `jump`
+   does not match "jumping", and a committed SFT sample uses "jumping" four times and scores
+   zero. That is tolerable for *reporting* (the ceiling is measured under the same rule) and
+   dangerous as a *reward*, because the policy optimises against the matcher and every
+   weakness becomes a strategy. Substring matching is not the fix — it counts `war` inside
+   "warm". Stemming, or accepting a shared prefix of ≥4 characters, is the place to start;
+   whatever is chosen, re-measure the ground-truth ceiling under the same rule.
+4. **The headroom is measured, so the GRPO claim has a target.** SFT reaches 0.467 words
+   found against a 0.686 ceiling (0.090 vs 0.332 on all-three). That gap is what GRPO exists
+   to close, and it is large enough to be visible. The 0.005-nat noise floor still applies to
+   any loss claim.
+
+**`nanochat-chat.ipynb` (WP-C) has the same staleness**: cells 9, 14, 16, 18, 22 hard-code
+`[INST]`, cell 0's table names `nanochat_sft_checkpoint.pkl`, and cell 15's prose explains a
+convention the SFT model no longer uses. Its §8 "what is missing" item about `[INST]` being
+shredded by BPE is now *fixed upstream* rather than a known weakness — that section needs
+rewriting, not just the code.
 
 **Cost reality, from the measured 1 h 42 m run.** 98% of wall-clock is `sample_group`:
 un-jitted, no KV cache, one batch-1 forward per sequence per token (G=4 separate calls),
@@ -1267,10 +1365,16 @@ course — sampling (temperature / top-k / top-p) and JAX shape stability.
       "replace the pasted model cell with `from nanochat_model import ...`" must cover
       `nanochat-chat.ipynb` too. The notebook's own prose promises this fix, so leaving it
       out would make the notebook wrong
-- [ ] **WP7 consequence:** this notebook hard-codes `[INST] … [/INST]` in `chat()`, in both
-      comparison prompts and in the sentence-count measurement. If WP7 moves SFT to the
-      TinyStoriesInstruct `Features:/Words:/Summary:/Story:` format, **all of them must
-      change and the notebook must be re-run**
+- [ ] **WP7 consequence — now settled, and this notebook is stale.** WP7 moved SFT to
+      `<|endoftext|>Words: …\nFeatures: …\nStory:\n` (built by `build_prompt`), **not** the
+      `Features:/Words:/Summary:/Story:` shape guessed here: `Summary:` and
+      `Random sentence:` are dropped, the field order is canonical, and the turn boundary is
+      the reserved separator rather than `[INST]`. Cells 9, 14, 16, 18 and 22 hard-code
+      `[INST]`, cell 0's table names `nanochat_sft_checkpoint.pkl` (should be
+      `nanochat_sft_best.pkl`), and cell 15's prose explains a convention the SFT model no
+      longer uses. **All of them must change and the notebook must be re-run.** The
+      sentence-count measurement has no counterpart in the new SFT task — replace it with
+      the word-constraint metric, or drop it
 - [ ] **WP6/WP-T consequence:** section 8 states there is no `<|endoftext|>` token and that
       this is why samples end mid-word. If 8.11 lands, that paragraph and the truncation
       caveat in section 5 both need rewriting
@@ -1466,6 +1570,7 @@ does not hold.
 
 | Date | WP | What happened |
 |------|----|---------------|
+| 2026-09-27 | WP7 | **`nanochat-sft.ipynb` rewritten on TinyStories-Instruct, reviewed, and re-run; numbers in `runs.md` S1/S2.** 20 cells → 28. The review's central finding (9.1) was that the old story-continuation task *could not demonstrate anything*; the replacement's premise was therefore **verified before any code was written** — prompted with the new template, the pretrained model writes dialogue in which `Words` and `Bad` are character names. **Held-out response loss 0.8437 → 0.6533** (0.1903, vs a 0.005 noise floor) and **constraint satisfaction 0.092 → 0.467 against a ground-truth ceiling of 0.686**, on a fixed 1,024-example validation set — replacing an old result measured on *one random batch of 8*. **The chat format is decided and WP8/WP-C inherit it**: `<|endoftext|>` as turn boundary rather than `[INST]`, `Words:`+`Features:` kept, canonical order, `build_prompt` as the single source. **Yoav asked whether a longer SFT would help; a 15-epoch probe (S2) says no** — validation bottoms at 3.0 epochs and rises after, while constraint satisfaction stays flat inside its error bars. The budget still went 3 → 6 epochs, not to train better but so the committed plot *shows* the turn: that makes best-checkpoint saving visibly necessary and yields the best-vs-overfit comparison. **Adversarially reviewed on two dimensions before commit**, which paid: four S1 prose errors of mine (response lengths 100–237 not 30–230, which forced rewriting the normalisation argument; GRPO claims stated as fact when the committed GRPO notebook does none of them; the old run ran to 160 and *shipped* 80; 3.5% of stories fit, not 1%), plus one real bug — Exercise 1's `1 - mask` weights the padding. The correctness reviewer verified the index arithmetic three ways and found no S1. **Three results carried to WP8**: the loss and behavioural metrics *disagree* about overfitting (loss clearly worse, coverage slightly better, ~1.3 SE); `words_present` is stricter than it looks (`jump` ≠ "jumping", hence the 0.686 ceiling) and is dangerous as a reward; and the coverage metric wobbles ~0.013 between full runs whose code is byte-identical, mechanism unresolved. **Cost three executions to notebook-size confusion** — corrected in WP-N and `CLAUDE.md`: the binding limit is on *source*, every notebook here is over when executed, and a figure costs ~9k tokens dominated by physical size. |
 | 2026-09-26 | WP6 | **WP6 edits landed and the QK-norm question settled by experiment.** Outputs stripped first (8.7 permits it, and the notebook was 28k tokens — unreadable by `Read`), then every prose and code edit landed *before* execution, per the size ground rule. **The A/B (N1) is the result:** 4,000 steps of RMS QK-norm against 4,000 of the old unit-L2, identical in init, data order and validation batches. Val **1.0707 vs 1.5027**, a 0.432-nat gap visible from step 200. The decisive number is not the loss but the **attention entropy ratio: L2 sits at 0.9995 — uniform to within 0.05% in every one of the 8 layers** — against RMS's 0.668. 8.1's arithmetic confirmed by measurement rather than by reading the old checkpoint, and E6 closed. **Tempering that matters:** RMS reaches in 4,000 steps the 1.069 the old run needed 23,500 for, so the old model was not broken, just paying ~6x the compute; the notebook now says so. Also landed: `RESUME=False` first (the pytrees are identical across the change, so nothing would have errored); A3 fixed more cheaply than planned (corpus stays flat/`uint16` on the host, `sample_batch` cuts 33 KB batches — the old code built a 4 GB device array before step 1); B5 fixed budget *derived* from Chinchilla (64,000 steps); the scaling table now generated and asserted against `init_params` (reproduces 26,223,104); held-out bpc against the TinyStories char baselines; attention maps (8.10); jitted fixed-buffer `generate` ported from WP-C plus `<|endoftext|>` stopping; and **`nanochat_model.py` is now generated** by the notebook with a reimport self-test. **A 200-step rehearsal of the whole notebook** was run before the real one — it found nothing, but it is the only way to confirm `inspect.getsource` survives `nbconvert` without spending 2.3 h to find out. It also overwrote the old checkpoints, which WP6 invalidates by design. Retrain in flight; review and commit still to come. |
 | 2026-09-26 | WP5 | **Two subagent reviews of WP5, and the fixes** (`1c5fcff`, `72dc682`). Reviewed *after* the package was committed and pushed — which is the wrong order, and is now a ground rule. **Confirmed sound:** `_apply_bpe_merges` ("apply each rule once in training order") was *proved* and empirically verified equivalent to textbook BPE over 6,148 segments, 0 disagreements; and `build_train_artifacts.py`'s streaming encoder is byte-identical to `bpe_encode` on 300 real documents — so the 1.04 B-token corpus was valid. **Two real bugs, one root cause:** ids were resolved by *string*, so a learned merge spelling a special token stole its id, and a learned token shaped `<|…|>` was silently treated as special (−50% compression on the reviewer's corpus). Fixed structurally by making the `[characters][merges][specials]` layout explicit (`vocab_layout`) and reading ids off positions; `SPECIAL_TOKEN_RE` deleted. **Verified behaviour-preserving — re-encoding reproduces `train_tokens.npy` byte-for-byte**, so no rebuild. Also fixed: `bpe_train` silently returning a short vocabulary (the toy example printed `vocab_size=14` after asking for 15, in committed output I had read twice), the sweep omitting `special_tokens` so its 1024-point was not the shipped tokenizer, a hand-typed module preamble that could drift, and two `build_train_artifacts.py` footguns (bare `KeyError` minutes in; `--sample-frac` silently ignored when a cached tokenizer existed). **Six prose claims were wrong**, including "forty-six times more documents" (98×; I conflated it with the drop-rate ratio *in the sentence that states that ratio correctly*), "`minisweagent.ipynb` imports `bpe.py`" (it does not), and "our longest tokens are bare words" (contradicted by the chart directly beneath). **And `runs.md` T5 claimed corrections had landed that had not** — T4 still carried 228 / 389 / +124. T2/T3 bannered, T4 corrected. Three cross-cutting lessons promoted to the decisions table. |
 | 2026-09-25 | WP5/WP-T/WP-R | **Single branch `revision2026`; WP-T delivered; the notebook now samples.** Branch consolidation (Yoav): stacking a branch per package meant each carried the previous one's unmerged commits — `revision2026` cut at `33c74c0` already contains WP4/WP5, and `sets-revision`/`wp5-bpe-tokenizer` are superseded. **WP-T done in 15.9 min** (budgeted 1–3 h): `bpe_tokenizer_train.pkl` (104 chars + 919 merges + 1 special) and `train_tokens.npy` (1,039,345,143 tokens, **uint16, 2.08 GB** against the old int64 file's 8.5 GB), verified by separator count, max id and boundary decoding. **Three published numbers were wrong and the run caught them** — 230 documents dropped (0.0085%) not 389 (0.014%), 227 distinct characters not 228, +123 merges not +124; the 389 had been measured for the frequency-only rule rather than the frequency ∪ ASCII rule shipped. **The notebook now samples** (`SAMPLE_FRAC = 0.10`), closing a preach-vs-practice gap Yoav caught: the sampling section explained a mechanism the code never exercised, which also left `chars=keep_chars` inert. A new cell measures character coverage by sample size (10% sees 72/79, missing `/0678=` and a backtick), and the fraction was chosen by measurement — 10% is within **0.08%** of full-corpus compression for a third of the time. The sampling trap and the always-keep-ASCII clause turn out to defend the same characters. Yoav's decisions recorded: **B6 reversed** (ship `.pkl` in a release; GPUs assumed, no in-class training), **real model not a toy**, **parameter-free RMS QK-norm** (verified against nanochat), **full train split at 26.2 M**. **WP-R created and deferred** — a release cut now would publish checkpoints WP6–WP8 are about to invalidate. Numbers in `runs.md` T5. |

@@ -24,9 +24,18 @@ def download_poker(data_dir):
 VALID_FILE = "TinyStoriesV2-GPT4-valid.txt"  # 22.5 MB
 TRAIN_FILE = "TinyStoriesV2-GPT4-train.txt"  # 2.23 GB
 
-def download_tinystories(filename: str, dest_dir: Path = Path(".")) -> None:
-    BASE_URL = "https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main"
-    url = f"{BASE_URL}/{filename}?download=true"
+# The instruction-tuning corpus used by `nanochat-sft.ipynb`. It lives in a *different*
+# HuggingFace repo, whose name has no hyphen (`TinyStoriesInstruct`) even though the
+# files inside it do. The hyphenated repo name 404s.
+INSTRUCT_VALID_FILE = "TinyStories-Instruct-valid.txt"  # 26.9 MB
+INSTRUCT_TRAIN_FILE = "TinyStories-Instruct-train.txt"  # 2.66 GB
+
+TINYSTORIES_URL = "https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main"
+INSTRUCT_URL = "https://huggingface.co/datasets/roneneldan/TinyStoriesInstruct/resolve/main"
+
+def download_tinystories(filename: str, dest_dir: Path = Path("."),
+                         base_url: str = TINYSTORIES_URL) -> None:
+    url = f"{base_url}/{filename}?download=true"
     dest = dest_dir / filename
     if dest.exists():
         print(f"Skipping {filename} (already exists)")
@@ -49,7 +58,10 @@ if __name__ == "__main__":
     dest_dir.mkdir(exist_ok=True)
     download_poker(dest_dir)
     download_tinystories(VALID_FILE, dest_dir)
+    download_tinystories(INSTRUCT_VALID_FILE, dest_dir, INSTRUCT_URL)
     if "--train" in sys.argv:
         download_tinystories(TRAIN_FILE, dest_dir)
+        download_tinystories(INSTRUCT_TRAIN_FILE, dest_dir, INSTRUCT_URL)
     else:
-        print(f"Skipping {TRAIN_FILE} (2.23 GB) — pass --train to download it.")
+        print(f"Skipping {TRAIN_FILE} (2.23 GB) and {INSTRUCT_TRAIN_FILE} (2.66 GB)"
+              f" — pass --train to download them.")

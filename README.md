@@ -30,6 +30,7 @@ This is the canonical setup procedure; [`index.ipynb`](index.ipynb) links here r
 Notebooks download data automatically on first run:
 
 - **TinyStories** validation split, `TinyStoriesV2-GPT4-valid.txt` (22.5 MB) — used in `bpe-tokenizer.ipynb` and `nanochat.ipynb`
+- **TinyStories-Instruct** validation split, `TinyStories-Instruct-valid.txt` (26.9 MB) — used in `nanochat-sft.ipynb`
 - **Poker hands** (UCI, 24 MB) — used in `sets.ipynb`
 - **Ollama** with `qwen3.5:9b` — required for `minisweagent.ipynb` ([install Ollama](https://ollama.com))
 
