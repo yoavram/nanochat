@@ -1310,14 +1310,14 @@ every 993.
 
 | steps | epochs | train | val | words found | all three |
 |---|---|---|---|---|---|
-| 993 | 3.0 | 0.574 | 0.6533 *(minimum at step 1,000)* | 0.427 | 0.094 |
+| 993 | 3.0 | 0.582 | 0.6533 *(minimum at step 1,000)* | 0.427 | 0.094 |
 | 1,986 | 6.0 | 0.486 | 0.6641 | 0.427 | 0.062 |
 | 2,979 | 9.0 | 0.435 | 0.6741 | 0.411 | 0.062 |
 | 3,972 | 12.0 | — | — | 0.479 | 0.078 |
 | 4,965 | 15.0 | — | — | 0.479 | 0.109 |
 
 **Answer: no.** Validation loss reaches its minimum of **0.6533 at step 1,000** and rises
-monotonically thereafter, while training loss keeps falling (0.574 → 0.426 by step 2,400).
+monotonically thereafter, while training loss keeps falling (0.582 → 0.426 by step 2,400).
 Thirty minutes would be ~10,000 steps, roughly ten times past the optimum.
 
 **And constraint satisfaction does not improve either** — it wanders between 0.411 and 0.479
@@ -1343,7 +1343,7 @@ which is a stronger determinism check on the training path than anything in S1.
 
 ---
 
-## G1 — GRPO on word-constraint satisfaction (WP8) · 2026-09-27 · **the reward went 0.46 → 0.96 past a 0.82 ceiling: a real reward hack, kept**
+## G1 — GRPO on word-constraint satisfaction (WP8) · 2026-09-27 · **the reward went 0.46 → 0.94 past a 0.82 ceiling: a real reward hack, kept**
 
 WP8's committed run. New ID prefix `G` for the GRPO notebook; `S*` is SFT, `N*` pretraining.
 (Note for whoever indexes this file: `S1` is used twice — line ~416 for `sets.ipynb` under
@@ -1360,34 +1360,43 @@ held-out prompts SFT never trained on either.
 | chance (SFT text, wrong words) | 0.022 ±0.006 | 0.000 |
 | pretrained | 0.119 ±0.009 | 0.000 |
 | SFT — where GRPO starts | 0.459 ±0.015 | 0.074 |
-| **GRPO, 150 steps** | **0.946 ±0.007** | **0.852** |
+| **GRPO, 150 steps** | **0.943 ±0.007** | **0.836** |
 | ground truth (ceiling) | 0.820 ±0.020 | 0.562 |
 
-Paired over the same prompts and the same sampling keys: **+0.487 ± 0.016**, 30.5 standard
-errors, 99% of prompts improved and none got worse. 150 steps = 4,800 generations in
-**32.4 min**; the whole notebook is ~45 min, about half of it evaluation.
+Paired over the same prompts and the same sampling keys: **+0.484 ± 0.016**, 30.4 standard
+errors, 98% of prompts improved and none got worse. 150 steps = 4,800 generations in
+**32.1 min**; the whole notebook is ~40 min, about 40% of it evaluation.
 
 **And it is a reward hack**, which is why the run was kept rather than retuned. The policy
-scores 0.126 *above* the stories the corpus itself provides. It gets there by repeating each
-required word **9.30 times per completion** against **4.38** in the real stories and 2.76
-under SFT, with a lower distinct-token ratio (0.588 vs 0.659 for ground truth). Three named
+scores 0.126 *above* the stories the corpus itself provides. It gets there by using the three
+required words **8.59 times in total per completion** against **4.38** in the real stories
+and 2.76 under SFT, with a lower distinct-token ratio (0.582 vs 0.659 for ground truth). Three named
 strategies, all visible in positionally-chosen samples:
 
-- naming a character after the word — *"a little frog named Fred … Fred loved to jump and
-  play with Fred. Fred wanted to jump and play with Fred."*
-- promoting the word to subject — *"a glad cliff was on top of a big mountain … 'Wow, this
-  cliff is so cool!' said the cliff."*
-- inserting it regardless of sense — *"he saw a valuable frog"*, and, scoring a perfect 1.00,
-  *"Lily was happy to meet the only infant in the famous infant."*
+- inserting the word regardless of sense — asked for `jump, value, ashamed`: *"Tim was a
+  very ashamed frog. He did not like to jump high in the sky like the value of his
+  friends."*; and for `put, cliff, glad`: *"a glad cliff was done."*
+- repeating until something lands — *"Tim jumped over a small pond to jump"*, *"He put more
+  and more cliffs on the cliff."*
+- and, on the third prompt, something that mostly reads like a story — *"there was a busy ant
+  named Andy. Andy wanted to sign his name to see the infant"* — which still repeats `infant`
+  four times, and which scores **1.00 exactly like the other two**. The reward cannot rank
+  them; that comparison is the sharpest thing in the notebook.
 
-(All three are from the notebook's committed output, on prompts chosen by position. An
-earlier draft of this entry quoted a *different* run's generations — the re-execution after
-the review fixes retrained the policy, and the quotes no longer existed in the notebook.
-Quote the artifact you shipped, not the one you looked at.)
+**Three corrections to earlier drafts of this entry, and the pattern is the point.** (i) It
+quoted a *different* run's generations, because re-executing retrains the policy. (ii)
+Rewritten against the committed output, it still mischaracterised two of them — calling a
+passage "naming a character after the required word" when the required words were `jump,
+value, ashamed` and the character was Fred; and offering *"he saw a valuable frog"* as the
+policy gaming the matcher when `valuable` is not in `word_forms('value')` and earns zero.
+(iii) It then went stale **again** when runs 5 and 6 retrained the policy, and was caught by a
+review, in the very entry that records (i) and (ii). A quotation being verbatim does not make
+the sentence around it true, and prose about generated text has to be re-derived after *every*
+execution — there is no version of this that survives a re-run untouched.
 
-**The KL term did not stop it.** β = 0.04 (the DeepSeekMath value) held drift to ~0.065
+**The KL term did not stop it.** β = 0.04 (the DeepSeekMath value) held drift to ~0.059
 nats/token, and that was enough. The forgetting check prices the damage: held-out
-language-modelling loss **0.8247 after SFT → 0.8405 after GRPO**, worse than the *pretrained*
+language-modelling loss **0.8247 after SFT → 0.8384 after GRPO**, worse than the *pretrained*
 model's 0.8340. The RL stage spent SFT's fluency gain, and some of pretraining's, buying
 reward.
 
@@ -1396,8 +1405,10 @@ reward.
 Measurement rigour was necessary and insufficient. The fixed prompt set, shared keys,
 clustered SE and paired difference all did their jobs — the effect is real, reproducible and
 enormous. They bought *precision about the wrong quantity*. Two things caught the problem and
-neither is a statistic about the reward: **the ceiling row**, measured in section 2 before any
-training, and **reading the output**. That is now the notebook's §10.
+neither is a statistic about the reward: **the ceiling row**, measured before any training
+(§2 fixes the rule and scores all 1,024 held-out stories at 0.837; §6 scores the 128
+evaluation prompts at 0.820, the number the result is compared against), and **reading the
+output**. That is now the notebook's §10.
 
 ### Measured facts worth not rediscovering
 
@@ -1415,15 +1426,15 @@ inside the notebook and asserts, so the claim cannot silently rot.
 **Batched, scanned sampling is ~34× faster than the old loop.** Fixed-width buffer, all B
 sequences in one call, token loop inside `jax.lax.scan`: **206 ms per 194-token generation**
 at B=32, against ~4.4 s for the previous per-token, batch-1, `.item()`-syncing version. That
-is what turned the plan's projected 8–12 h into 45 min. `grpo_loss` padded and jitted costs
+is what turned the plan's projected 8–12 h into ~40 min. `grpo_loss` padded and jitted costs
 0.27 s per gradient step at B=32 — about 2% of a step, exactly as the plan predicted, which
 is why sampling was fixed first.
 
 **K > 1 is what makes clipping exist.** At K=1 the clipped fraction is exactly 0.0000 by
-construction (ρ ≡ 1). Measured after all 4 inner epochs: **0.0087** mean over the run, rising
+construction (ρ ≡ 1). Measured after all 4 inner epochs: **0.0090** mean over the run, rising
 to ~0.066 on the first step. Small, but non-zero and real.
 
-**Dead groups rise as the task is solved**: 0% early, **35.7% over the whole run**, because
+**Dead groups rise as the task is solved**: 0% early, **39.2% over the whole run**, because
 groups increasingly score all-1.0. A high dead fraction late is not a bug, it is the signal
 that the reward has been saturated.
 
@@ -1527,3 +1538,73 @@ subject being taught, and a notebook that deleted them would have nothing to say
 clipping or trust regions. The honest framing — now in the notebook — is that karpathy's
 simplifications are what you reach for when you are on-policy and want the thing to work,
 and the full objective is what you implement when you want to understand what was simplified.
+
+---
+
+## G2 — does a fluency term close the exploit? · 2026-09-27 · **no: pretrained likelihood prefers the hacked text to the real stories**
+
+Yoav asked whether a different reward avoids G1's failure. Rather than argue, a standalone
+probe (`scratchpad/probe_reward.py`) ran the committed notebook's own cells — same matcher,
+sampler, rollout and loss, byte-identical — and swapped only the reward:
+
+```
+reward = words_present(text) * fluency(text)
+fluency = clip((HI - nll) / (HI - LO), 0, 1)
+```
+
+`nll` is the completion's per-token negative log-likelihood under the **frozen pretrained
+model** — a reward model we already had and never trained. Multiplicative on purpose, so the
+two factors cannot be traded against each other. `LO`/`HI` are the 50th and 99th percentiles
+of the *real stories'* own NLL, so the bar is set by the corpus rather than invented.
+
+### It did not work
+
+| | words found | fluency | composite | all three |
+|---|---|---|---|---|
+| SFT | 0.459 | 0.995 | 0.456 | 0.074 |
+| **GRPO, composite reward** | **0.954 ±0.007** | 0.990 | 0.944 | 0.867 |
+| ground truth (ceiling) | 0.820 | **0.707** | — | 0.562 |
+
+150 steps, 25.1 min. G1 (words-only) reached 0.943; G2 reached **0.954** — no better, and
+still 0.134 above the ceiling. Required-word mentions 8.53 against ground truth's 4.38
+(G1: 8.59); distinct/token 0.595 against 0.659 (G1: 0.582). The gate never engaged.
+
+### Why, and the number that predicts it before you train
+
+**The pretrained model assigns higher likelihood to the policies' own text than to human
+writing**: fluency 0.99 for both SFT and GRPO completions, **0.707** for the real stories.
+That is not a tuning failure, it is the wrong signal — repetition is high-likelihood, which
+is the well-known neural text degeneration result. An anti-degeneracy term built out of
+likelihood is being asked to penalise exactly the thing likelihood rewards.
+
+The calibration alone says this, in ~20 seconds, before a single training step:
+real-story NLL p50 **0.8355**, p90 1.0896, p99 1.2891, against SFT completions sitting near
+the top of that range. **Run the calibration before the 25 minutes of RL.**
+
+Sample, scoring well: *"Kitty had a value to her friends … let's jump higher than us find
+value to each other!"* — ungrammatical insertion, high likelihood, paid in full.
+
+### What to try instead
+
+Price the measured symptom, not a proxy for it, and keep the multiplicative structure:
+
+```
+reward = words_present(text) * mention_gate(text)     # thresholds from the corpus:
+                                                      # ground truth 4.38 mentions, hacked 8.59
+```
+
+or a distinct-token floor (ground truth 0.659, hacked 0.582). Both are *also* surface
+statistics and therefore also gameable — mention each word once and pad with varied filler —
+so the honest framing is that at 26 M parameters you choose which failure you can live with.
+The general answer is a learned reward model or human evaluation, which is where production
+RLHF actually spends its effort.
+
+**Second, independent reason the composite structure is right:** `words_present` *saturates*.
+Once the policy reliably lands all three words there is no gradient left, which is what G1's
+39.2% dead-group fraction is. A reward with a continuous quality term cannot saturate.
+
+### What goes in the notebook
+
+The calibration, not the training run — it is the stronger argument (a property of the
+signal, not of one run) and costs 20 seconds against 25 minutes. G2's outcome is cited here
+in one line rather than re-run in the notebook, which keeps it at ~40 min.

@@ -17,8 +17,15 @@ not only at the end of one.
 
 ## START HERE — state as of 2026-09-27, end of the WP8 session
 
-**Done and committed:** WP0, WP1, WP2, WP3, WP4, WP5, WP-T, WP6, WP7, **WP8** (`242e275`).
-Numbers in `runs.md` G1 and its karpathy addendum.
+**Done and committed:** WP0, WP1, WP2, WP3, WP4, WP5, WP-T, WP6, WP7, **WP8**.
+Numbers in `runs.md` G1, its karpathy addendum, and G2 (the reward probe).
+
+**WP8 landed over three commits and six executions**, which is worth knowing before trusting
+any number: `242e275` and `4c54a35` were the first pass, then three review rounds forced
+re-executions (the clipping metric was measured before the update; the matcher paid for
+`carrier`/`bed`/`being`; `per_token_nll` scored an empty completion as perfectly fluent).
+**Every re-execution retrains the policy and changes both the numbers and the sample text**,
+which caught out the prose three separate times. The shipped numbers are run 6's.
 
 **Open, in the order they probably want doing:**
 
@@ -44,15 +51,15 @@ loudly**, which is the intended outcome: WP-C must point at
    elsewhere. Cite "S1" only with its subject attached.
 
 **WP8's headline, because it changes what the notebook teaches:** GRPO took held-out
-constraint satisfaction from **0.459 to 0.946** — and the ground-truth ceiling is **0.820**.
-The policy beat the data by repeating each required word ~9 times (vs 4.4 in real stories),
-naming characters after required words, and promoting them to subject; the forgetting check
-shows language-modelling loss *worse than the pretrained model*. **This is a genuine reward
+constraint satisfaction from **0.459 to 0.943** — and the ground-truth ceiling is **0.820**.
+The policy beat the data by using the three required words 8.6 times in total per
+completion (vs 4.4 in real stories), welding it to a noun and making it the subject, and inserting it where it
+makes no sense; the forgetting check shows language-modelling loss *worse than the
+pretrained model*. **This is a genuine reward
 hack and it was kept, not retuned** — it is a far better lesson than a tidy 5% gain, and the
 notebook's §10 is built on it. Full numbers and the three named strategies: `runs.md` G1.
 
-**Branch `revision2026` is one commit ahead of `origin/revision2026` and has NOT been
-pushed** — `242e275`. Push it when you are happy with WP8.
+**Branch `revision2026`: WP8 is committed and pushed.**
 
 **Artifacts on disk** (none in git; all gitignored):
 
@@ -74,14 +81,26 @@ call: the review stays untracked), `.codex`, `slurm-download-data.sh`.
 scripts importing `nanochat_model` or `bpe`.
 
 **Three process lessons from WP8, all folded into the rules below:**
-- **Wait on a PID, never on a `pgrep` pattern** — `while pgrep -f "X"` matches its own
-  command line and never exits. Cost this session: three false "still running" readings and
-  one wrong-PID watch that reported a live run as finished.
+- **Wait on a PID, never on a `pgrep` pattern, and get the PID right.** Two distinct traps,
+  both hit repeatedly this session. (i) `while pgrep -f "X"; do ...` matches *its own* command
+  line and never exits. (ii) `pixi run jupyter nbconvert ...` spawns a wrapper whose argv
+  contains the same string as the real worker, so `pgrep -f "jupyter-nbconvert" | head -1`
+  (or `| tail -1`) returns the wrapper or a transient, and the watcher then reports a live
+  run as finished. Four wrong-PID watches this session. The incantation that works:
+
+  ```sh
+  PID=$(pgrep -f "envs/default/bin/python.*jupyter-nbconvert" | head -1)
+  while kill -0 $PID 2>/dev/null; do sleep 60; done
+  ```
+
+  Match the interpreter path, not the tool name, and verify with `pgrep -af` before trusting
+  it — an `nbconvert` run only writes its output file at the very end, so "no output yet" and
+  "already finished" look identical if you are watching the wrong process.
 - **A notebook can exceed the `Read` limit with outputs already cleared.** This one is 27.9k
   tokens stripped, so `NotebookEdit` was unavailable for the final edits and the `nbformat`
   route was used, validating outputs byte-identical afterwards.
 - **Review during the run, and be willing to kill it.** Two reviews found 26 issues; the run
-  was killed at ~10 min instead of completing 45 min of numbers that would have been thrown
+  was killed at ~10 min instead of completing ~40 min of numbers that would have been thrown
   away.
 
 ---
@@ -115,7 +134,7 @@ scripts importing `nanochat_model` or `bpe`.
 | — | **Rehearse a long run at tiny scale first** | **Established 2026-09-26 (WP6).** Before a 2.3 h `nbconvert --execute`, the whole notebook was run end to end at `n_steps=200` on a throwaway copy. It found nothing — and was still worth its ten minutes, because it is the only way to learn that the `inspect.getsource` module-emission cell works under `nbconvert`, that the post-training cells run in the order they appear, and that no late cell references a name defined below it. A failure in the last cell of a long run costs the whole run. Two caveats learned: a rehearsal **writes to the same checkpoint paths as the real run**, and executing cells by `exec` on their source (rather than through a kernel) breaks `inspect.getsource`, so that one cell can only be tested through a real kernel. |
 | — | **Measure the mechanism, not just the outcome** | **Established 2026-09-26 (WP6).** The QK-norm A/B produced a 0.432-nat loss gap, which on its own would only say "the fix helped". The number that *explains* it is the attention entropy ratio: **0.9995 under unit-L2, uniform to within 0.05% in every layer**, exactly as the arithmetic predicted, against 0.668 under RMS. A loss gap is evidence; a mechanism measurement is an explanation, and it is what turns a fix into teaching material. Cheap to add to any A/B — instrument the quantity your hypothesis is *about*. |
 | — | **Ceilings before blame** | Established in WP4, generalisable. Before attributing a model's failure to its architecture, compute what the *task* permits — WP4's suit-blind ceiling (99.82% / 7-of-9) was derived from the data in three lines with no model, and predicted the trained Set Transformer's score exactly. Cheap, and it converts an unexplained blemish into the notebook's strongest claim. Worth asking in WP6–WP8 too. |
-| — | **Check the result against the ceiling, not against zero** | **Established 2026-09-27 (WP8), and it is the lesson of the package.** GRPO improved held-out constraint satisfaction from 0.459 to 0.946 — 30 standard errors, 99% of prompts improved, every statistic immaculate — by *beating the ground-truth ceiling of 0.820*, which is only possible if it is doing a different task than the one intended. It was: repeating each required word ~9 times against 4.4 in real stories, naming characters after required words, promoting them to subject. **The entire measurement apparatus (fixed prompt set, shared keys, clustered SE, paired difference) worked perfectly and bought precision about the wrong quantity.** Only two things caught it, neither a statistic about the reward: the ceiling row, and reading the output. Compute what the task permits *before* training, put it in the same table as the result, and read it last. Generalises WP4's "ceilings before blame". |
+| — | **Check the result against the ceiling, not against zero** | **Established 2026-09-27 (WP8), and it is the lesson of the package.** GRPO improved held-out constraint satisfaction from 0.459 to 0.943 — 30 standard errors, 98% of prompts improved, every statistic immaculate — by *beating the ground-truth ceiling of 0.820*, which is only possible if it is doing a different task than the one intended. It was: using the three required words 8.6 times in total per completion against 4.4 in real stories, welding it to a noun and making it the subject, and inserting it where it makes no sense ("the only infant in the famous infant", scoring 1.00). **The entire measurement apparatus (fixed prompt set, shared keys, clustered SE, paired difference) worked perfectly and bought precision about the wrong quantity.** Only two things caught it, neither a statistic about the reward: the ceiling row, and reading the output. Compute what the task permits *before* training, put it in the same table as the result, and read it last. Generalises WP4's "ceilings before blame". |
 | — | **A failed run can be the better artifact — decide on teaching value, not tidiness** | **Yoav's register applied 2026-09-27 (WP8).** The reward hack above could have been tuned away (raise β, stop at step 25) for a modest, respectable improvement. It was kept, and the notebook's discussion was rebuilt around it, because a *measured* reward-hacking event with the instruments that catch it teaches more than a clean 5% gain — and because it vindicates the notebook's own opening claim that RL is good at producing numbers that go up for the wrong reasons. The test is not "does this look like a success" but "does the reader learn more from it". Reopening requires arguing the tidy result teaches more. |
 
 ### Environment facts verified 2026-09-20
@@ -1308,7 +1327,7 @@ to what this plan and `CLAUDE.md` previously implied — see WP-N below.
 
 ---
 
-### WP8 — `nanochat-grpo.ipynb`  ✅ **done 2026-09-27** — 0.459 → 0.946 against a 0.820 ceiling: a reward hack, kept deliberately
+### WP8 — `nanochat-grpo.ipynb`  ✅ **done 2026-09-27** — 0.459 → 0.943 against a 0.820 ceiling: a reward hack, kept deliberately
 
 Full results in `runs.md` **G1**. What this package decided, as distinct from what it measured:
 
@@ -1328,7 +1347,7 @@ Full results in `runs.md` **G1**. What this package decided, as distinct from wh
   **Consequence for WP-C:** `nanochat_grpo_best.pkl` is no longer produced, and the copy on
   disk is pre-WP6 and invalid. WP-C must stop loading it.
 - **K = 4 inner epochs**, which is the only reason the clipped surrogate does anything: at
-  K=1 the clipped fraction is exactly 0 by construction. Measured 0.0087 after all four.
+  K=1 the clipped fraction is exactly 0 by construction. Measured 0.0090 after all four.
 - **The run was kept rather than retuned.** Beating the ceiling by 0.126 is a failure of the
   *specification*, and the notebook now teaches that: §10 names the three strategies the
   policy found, prices the damage with the forgetting check, and says plainly that the
