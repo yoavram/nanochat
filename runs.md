@@ -51,7 +51,7 @@ all retained; the conclusions were, and each was acted on.
 | W2 | is 10k steps converged? | validation curves to 50k steps | No — at 10k every model was still improving, so the 500k/10k gaps were partly noise on a non-converged curve. → 30k steps adopted; at 200k/30k `\|final − best\| ≈ 0`, i.e. no overfitting left |
 | W3 | is cosine the right schedule here? | cosine vs `optax.contrib.reduce_on_plateau`, 200k budget | Tied — plateau won 5 of 6 by margins inside seed noise. → **cosine retained** (simpler to teach, one fewer hyperparameter) |
 | W4 | how big is seed noise? | identical code+seed, repeated | rnn-3L gave 2.133 then 2.066 on a re-run. Not a bug — GPU/XLA nondeterminism compounded over 10k steps on a non-converged curve. → motivated reporting **3 seeds with error bars** rather than single numbers |
-| W5 | the published 200k/30k sweep | 6 models × 3 seeds, in-notebook | rnn 2.0976±0.0112, gru 2.0635±0.0131, transformer 2.1852±0.0055, rnn-3L 2.0848±0.0153, gru-3L 2.0423±0.0086, transformer-3L 2.0403±0.0042. **Superseded by C4**, which agrees within noise and has cleaner error bars |
+| W5 | the published 200k/30k sweep | 6 models × 3 seeds, in-notebook | rnn 2.0976±0.0112, gru 2.0635±0.0131, transformer 2.1852±0.0055, rnn-3L 2.0848±0.0153, gru-3L 2.0423±0.0087, transformer-3L 2.0403±0.0042. **Superseded by C4**, which agrees within noise and has cleaner error bars |
 
 ---
 
@@ -104,7 +104,7 @@ Depth effect (1 → 3 layers, same budget):
 |---|---|---|---|
 | rnn | +0.0122 | 0.0093 | 1.3σ — **within noise** |
 | gru | +0.0187 | 0.0156 | 1.2σ — **within noise** |
-| transformer | +0.1333 | 0.0086 | 15.4σ — **real** |
+| transformer | +0.1333 | 0.0087 | 15.4σ — **real** |
 
 Rankings: at 1 layer `gru 2.061 < rnn 2.097 < transformer 2.178` — the
 transformer is the **worst** of the six. At 3 layers
@@ -1340,3 +1340,190 @@ finding 1 in S1 rests on.
 **Reproducibility note:** the probe reproduced the notebook's validation curve step for step
 (0.6948 @100, 0.6772 @200, 0.6686 @300, … 0.6533 @1,000) from a separate process and script,
 which is a stronger determinism check on the training path than anything in S1.
+
+---
+
+## G1 — GRPO on word-constraint satisfaction (WP8) · 2026-09-27 · **the reward went 0.46 → 0.96 past a 0.82 ceiling: a real reward hack, kept**
+
+WP8's committed run. New ID prefix `G` for the GRPO notebook; `S*` is SFT, `N*` pretraining.
+(Note for whoever indexes this file: `S1` is used twice — line ~416 for `sets.ipynb` under
+WP4, and line ~1194 for SFT under WP7. Not renumbered here, but do not cite "S1" unqualified.)
+
+Everything below is on one A4000, starting from `nanochat_sft_best.pkl` (step 1,000,
+val 0.6533), prompts drawn from the 10,596 SFT training examples, evaluation on the 128
+held-out prompts SFT never trained on either.
+
+### The headline
+
+| | words found | all three |
+|---|---|---|
+| chance (SFT text, wrong words) | 0.022 ±0.006 | 0.000 |
+| pretrained | 0.119 ±0.009 | 0.000 |
+| SFT — where GRPO starts | 0.459 ±0.015 | 0.074 |
+| **GRPO, 150 steps** | **0.946 ±0.007** | **0.852** |
+| ground truth (ceiling) | 0.820 ±0.020 | 0.562 |
+
+Paired over the same prompts and the same sampling keys: **+0.487 ± 0.016**, 30.5 standard
+errors, 99% of prompts improved and none got worse. 150 steps = 4,800 generations in
+**32.4 min**; the whole notebook is ~45 min, about half of it evaluation.
+
+**And it is a reward hack**, which is why the run was kept rather than retuned. The policy
+scores 0.126 *above* the stories the corpus itself provides. It gets there by repeating each
+required word **9.30 times per completion** against **4.38** in the real stories and 2.76
+under SFT, with a lower distinct-token ratio (0.588 vs 0.659 for ground truth). Three named
+strategies, all visible in positionally-chosen samples:
+
+- naming a character after the word — *"a little frog named Fred … Fred loved to jump and
+  play with Fred. Fred wanted to jump and play with Fred."*
+- promoting the word to subject — *"a glad cliff was on top of a big mountain … 'Wow, this
+  cliff is so cool!' said the cliff."*
+- inserting it regardless of sense — *"he saw a valuable frog"*, and, scoring a perfect 1.00,
+  *"Lily was happy to meet the only infant in the famous infant."*
+
+(All three are from the notebook's committed output, on prompts chosen by position. An
+earlier draft of this entry quoted a *different* run's generations — the re-execution after
+the review fixes retrained the policy, and the quotes no longer existed in the notebook.
+Quote the artifact you shipped, not the one you looked at.)
+
+**The KL term did not stop it.** β = 0.04 (the DeepSeekMath value) held drift to ~0.065
+nats/token, and that was enough. The forgetting check prices the damage: held-out
+language-modelling loss **0.8247 after SFT → 0.8405 after GRPO**, worse than the *pretrained*
+model's 0.8340. The RL stage spent SFT's fluency gain, and some of pretraining's, buying
+reward.
+
+### Why this is the better artifact
+
+Measurement rigour was necessary and insufficient. The fixed prompt set, shared keys,
+clustered SE and paired difference all did their jobs — the effect is real, reproducible and
+enormous. They bought *precision about the wrong quantity*. Two things caught the problem and
+neither is a statistic about the reward: **the ceiling row**, measured in section 2 before any
+training, and **reading the output**. That is now the notebook's §10.
+
+### Measured facts worth not rediscovering
+
+**The evaluation is bit-reproducible, within a process and across processes.** Two scorings
+of one policy returned identical per-completion scores on all 512 samples, and a second
+process reproduced the first exactly (mean 0.4590 both times, `max |diff| = 0.0000`). This
+closes the question WP8's plan entry raised as a blocker ("an RL improvement smaller than
+~0.03 is not evidence until that floor is measured"). **The floor is zero** under this
+protocol — enumerated prompts, keys derived from batch position, and one fixed-shape compiled
+sampler — so the only uncertainty is the sampling SE the table prints (±0.007–0.020). WP7's
+0.013 drift did *not* reproduce here; the cause there was never identified and is not
+re-opened, but nothing in this path exhibits it. A reduced version of the check now runs
+inside the notebook and asserts, so the claim cannot silently rot.
+
+**Batched, scanned sampling is ~34× faster than the old loop.** Fixed-width buffer, all B
+sequences in one call, token loop inside `jax.lax.scan`: **206 ms per 194-token generation**
+at B=32, against ~4.4 s for the previous per-token, batch-1, `.item()`-syncing version. That
+is what turned the plan's projected 8–12 h into 45 min. `grpo_loss` padded and jitted costs
+0.27 s per gradient step at B=32 — about 2% of a step, exactly as the plan predicted, which
+is why sampling was fixed first.
+
+**K > 1 is what makes clipping exist.** At K=1 the clipped fraction is exactly 0.0000 by
+construction (ρ ≡ 1). Measured after all 4 inner epochs: **0.0087** mean over the run, rising
+to ~0.066 on the first step. Small, but non-zero and real.
+
+**Dead groups rise as the task is solved**: 0% early, **35.7% over the whole run**, because
+groups increasingly score all-1.0. A high dead fraction late is not a bug, it is the signal
+that the reward has been saturated.
+
+**Ground-truth ceiling depends on the matcher, so it must be re-measured with it.** Under the
+inflection matcher: 0.837 / 0.622 all-three on the 1,024 held-out stories. Under
+`nanochat-sft.ipynb`'s exact-spelling rule: 0.768 / 0.470. The strict rule reproduced WP7's
+committed 0.686 exactly on its first 256 prompts, which validated the pipeline before
+anything was changed.
+
+**Ground-truth responses average 209 tokens**, so the old `max_new=80` was measuring
+truncation. The budget is now 194 — one constant set by the longest prompt (61 tokens) so the
+compiled program has one shape. Residual known limitation: 83% of eval prompts have
+ground-truth stories longer than 194, so the comparison is still not budget-neutral, only far
+closer than before.
+
+### Process notes
+
+**Two adversarial reviews, dispatched at the start of the run, found 26 issues between them**
+— and the run was killed at ~10 min rather than spend 45 on numbers that would be discarded.
+The load-bearing ones:
+
+- **The clipping metric was measured before the update.** `jax.value_and_grad`'s aux
+  describes the parameters the gradient was taken *at*, so the "after epoch 1" curve was
+  identically 0.0000 *at every K* — a tautology being plotted as a measurement — and the
+  "after epoch K" curve actually showed K−1 updates. An exercise had been built on it. Fixed
+  with a metrics-only jit evaluated after the inner loop (one extra forward per step).
+- **The reward had reward-hacking surfaces of its own.** `word_forms` generated `-er`/`-est`/
+  `-ly` and an ungated `-es`, producing real words that are not forms of the required word:
+  `let`→letter, `corn`→corner, `man`→manner, `moth`→mother, `mat`→mates, `on`→ones. Dropped
+  and gated. Separately the tokeniser lost `wife's` as a use of `wife`, which made four
+  stories score *lower* under the "looser" matcher than the strict one — invisible in the
+  averages, which moved the expected way regardless. Now a runtime assertion.
+- **Dr. GRPO was misattributed.** The notebook credited the *std* divisor with inflating
+  response length. Liu et al. §3 is explicit: dividing by `|o_i|` gives the response-length
+  bias, dividing by `std(R)` gives a *question-difficulty* bias. Verified against the PDF,
+  not from memory. The quoted phrase in reference 3 is from the paper's Figure 1 caption —
+  a reviewer flagged it as unsourceable having checked only the abstract and README.
+- **"DeepSeek-R1-Zero starts from a 7B base model"** — false, inherited verbatim from the old
+  notebook. It is DeepSeek-V3-Base, 671B MoE.
+- Several claims about the *old* notebook were overstated and were corrected rather than
+  dropped: early stopping **never fired**; the headline SFT-vs-GRPO comparison **did** share
+  sampling keys (both defaulted to `seed=7`); the reported difference was +0.112, not ~0.03.
+
+**Rehearsing at tiny scale paid for itself three times.** The first rehearsal died instantly
+on `ModuleNotFoundError` because the throwaway copy sat outside the repo — `nbconvert` runs
+the kernel in the notebook's directory. A later one exposed a figure panel plotting KL (~1e-3)
+against a 0–1 fraction on one axis. Both would have cost a full run.
+
+**A watcher built as `while pgrep -f "<pattern>"` matches its own command line** and never
+exits — the same trap W6 recorded, hit again in a different form. Waiting on an explicit PID
+(`while kill -0 $PID`) works.
+
+### G1 addendum — how this compares with `karpathy/nanochat`'s RL stage
+
+Checked against the source 2026-09-27 (`scripts/chat_rl.py`, `tasks/gsm8k.py`), because the
+notebook cites nanochat as the implementation this series follows and was silently differing
+from it on every axis.
+
+**The reward is the important difference, and it explains the hack.**
+
+| | karpathy/nanochat | this notebook |
+|---|---|---|
+| task | GSM8K word problems | write a story using three given words |
+| reward | `float(is_correct)` — binary, exact match on the extracted final numeric answer | fraction of the three required words present |
+| gameable by surface manipulation? | **no** | **yes** |
+
+GSM8K's reward scores a **verifiable outcome**: one correct number, extracted and compared.
+Repetition, renaming and padding cannot move it. Ours scores a **surface feature** — does this
+token appear — and surface features are exactly what a language model can manipulate without
+doing the task. The reward hack in G1 is therefore not bad luck; it is the predictable
+consequence of paying for a proxy instead of an outcome. Worth stating in any future package
+that adds a reward: *ask whether the reward can be satisfied without doing the task, before
+running anything.*
+
+**And karpathy's RL is deliberately not GRPO.** Verbatim from the header of `chat_rl.py`:
+
+> I put GRPO in quotes because we actually end up with something a lot simpler and more
+> similar to just REINFORCE:
+> 1) Delete trust region, so there is no KL regularization to a reference model
+> 2) We are on policy, so there's no need for PPO ratio+clip.
+> 3) We use DAPO style normalization that is token-level, not sequence-level.
+> 4) Instead of z-score normalization (r - mu)/sigma, only use (r - mu) as the advantage.
+
+Where this notebook stands against those four:
+
+| | karpathy | this notebook |
+|---|---|---|
+| 1. KL to reference | none | **has one** (β = 0.04) — and it did not prevent the hack |
+| 2. PPO ratio + clip | none (on-policy, K=1) | **has it**, and K=4 is what makes it bind at all |
+| 3. normalization | token-level (DAPO) | **token-level — same choice** (`response_mask.sum()` batch-wide, not per sequence) |
+| 4. advantage | `r - mu` | `(r - mu)/sigma` — **differs** |
+
+Two consequences worth carrying forward. (a) On point 3 the notebook already agrees with both
+karpathy and Dr. GRPO, which is why §10's claim that it "carries only the standard-deviation
+half" of the GRPO bias is correct. (b) On point 4, Exercise 4 asks the student to drop the
+sigma — which converges on karpathy's choice *and* Liu et al.'s recommendation simultaneously.
+That was coincidence when the exercise was written and is now stated as the point of it.
+
+Keeping the KL and the clip is a deliberate divergence, not an oversight: they are the
+subject being taught, and a notebook that deleted them would have nothing to say about
+clipping or trust regions. The honest framing — now in the notebook — is that karpathy's
+simplifications are what you reach for when you are on-policy and want the thing to work,
+and the full objective is what you implement when you want to understand what was simplified.
