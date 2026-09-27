@@ -17,8 +17,8 @@ not only at the end of one.
 
 ## START HERE — state as of 2026-09-27, end of the WP8 session
 
-**Done and committed:** WP0, WP1, WP2, WP3, WP4, WP5, WP-T, WP6, WP7.
-**WP8 is done and awaiting commit** — see `runs.md` G1.
+**Done and committed:** WP0, WP1, WP2, WP3, WP4, WP5, WP-T, WP6, WP7, **WP8** (`242e275`).
+Numbers in `runs.md` G1 and its karpathy addendum.
 
 **Open, in the order they probably want doing:**
 
@@ -51,8 +51,8 @@ shows language-modelling loss *worse than the pretrained model*. **This is a gen
 hack and it was kept, not retuned** — it is a far better lesson than a tidy 5% gain, and the
 notebook's §10 is built on it. Full numbers and the three named strategies: `runs.md` G1.
 
-**Branch `revision2026`.** WP8's notebook edits and `runs.md` G1 are **not yet committed** at
-the time of writing.
+**Branch `revision2026` is one commit ahead of `origin/revision2026` and has NOT been
+pushed** — `242e275`. Push it when you are happy with WP8.
 
 **Artifacts on disk** (none in git; all gitignored):
 
