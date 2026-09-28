@@ -31,7 +31,7 @@ which caught out the prose three separate times. The shipped numbers are run 6's
 
 | package | state | note |
 |---|---|---|
-| **WP-J** judge in the notebook | ✅ **done 2026-09-28**, not yet committed | Yoav's idea and Yoav's call to put it in the training loop. Sections 11–12 of `nanochat-grpo.ipynb`; `runs.md` G3/G4/G5 |
+| **WP-J** judge in the notebook | ✅ **done and pushed 2026-09-28** (`c4edf61`) | Yoav's idea and Yoav's call to put it in the training loop. Sections 11–12 of `nanochat-grpo.ipynb`; `runs.md` G3/G4/G5 |
 | **WP-C** `nanochat-chat.ipynb` | ⚠ **reopened** | WP7 invalidated five cells; WP8 has now also changed which GRPO checkpoint exists |
 | WP-N | ⬜ not started | only `text-transformer.ipynb` is genuinely stuck |
 | WP9 `minisweagent.ipynb` | ⬜ not started | independent of the nanochat chain |
