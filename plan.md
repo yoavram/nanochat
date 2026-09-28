@@ -15,7 +15,7 @@ not only at the end of one.
 
 ---
 
-## START HERE — state as of 2026-09-27, end of the WP8 session
+## START HERE — state as of 2026-09-28, after WP8 and the reward-design probes
 
 **Done and committed:** WP0, WP1, WP2, WP3, WP4, WP5, WP-T, WP6, WP7, **WP8**.
 Numbers in `runs.md` G1, its karpathy addendum, and G2 (the reward probe).
@@ -31,7 +31,8 @@ which caught out the prose three separate times. The shipped numbers are run 6's
 
 | package | state | note |
 |---|---|---|
-| **WP-C** `nanochat-chat.ipynb` | ⚠ **reopened, now the blocker** | **next.** WP7 invalidated five cells; WP8 has now also changed which GRPO checkpoint exists |
+| **WP-J** judge as an instrument | 🔬 **probe running** | Yoav's idea, and it works — see below and `runs.md` G3/G4. Decide whether it lands in the notebook |
+| **WP-C** `nanochat-chat.ipynb` | ⚠ **reopened** | WP7 invalidated five cells; WP8 has now also changed which GRPO checkpoint exists |
 | WP-N | ⬜ not started | only `text-transformer.ipynb` is genuinely stuck |
 | WP9 `minisweagent.ipynb` | ⬜ not started | independent of the nanochat chain |
 | WP10 `index.ipynb` rewrite | ⬜ do last | WP7 refreshed its SFT line; WP8's GRPO line now needs the same |
@@ -95,7 +96,11 @@ scripts importing `nanochat_model` or `bpe`.
 
   Match the interpreter path, not the tool name, and verify with `pgrep -af` before trusting
   it — an `nbconvert` run only writes its output file at the very end, so "no output yet" and
-  "already finished" look identical if you are watching the wrong process.
+  "already finished" look identical if you are watching the wrong process. **Five
+  misidentifications across this session**, including one immediately after writing this
+  rule down, because the pattern then appeared inside the *launching* command's own argv.
+  The version that finally stopped failing is not a PID at all: have the job `touch` a
+  sentinel file when it exits and wait on the file.
 - **A notebook can exceed the `Read` limit with outputs already cleared.** This one is 27.9k
   tokens stripped, so `NotebookEdit` was unavailable for the final edits and the `nbformat`
   route was used, validating outputs byte-identical afterwards.
@@ -136,6 +141,8 @@ scripts importing `nanochat_model` or `bpe`.
 | — | **Ceilings before blame** | Established in WP4, generalisable. Before attributing a model's failure to its architecture, compute what the *task* permits — WP4's suit-blind ceiling (99.82% / 7-of-9) was derived from the data in three lines with no model, and predicted the trained Set Transformer's score exactly. Cheap, and it converts an unexplained blemish into the notebook's strongest claim. Worth asking in WP6–WP8 too. |
 | — | **Check the result against the ceiling, not against zero** | **Established 2026-09-27 (WP8), and it is the lesson of the package.** GRPO improved held-out constraint satisfaction from 0.459 to 0.943 — 30 standard errors, 98% of prompts improved, every statistic immaculate — by *beating the ground-truth ceiling of 0.820*, which is only possible if it is doing a different task than the one intended. It was: using the three required words 8.6 times in total per completion against 4.4 in real stories, welding it to a noun and making it the subject, and inserting it where it makes no sense ("the only infant in the famous infant", scoring 1.00). **The entire measurement apparatus (fixed prompt set, shared keys, clustered SE, paired difference) worked perfectly and bought precision about the wrong quantity.** Only two things caught it, neither a statistic about the reward: the ceiling row, and reading the output. Compute what the task permits *before* training, put it in the same table as the result, and read it last. Generalises WP4's "ceilings before blame". |
 | — | **A failed run can be the better artifact — decide on teaching value, not tidiness** | **Yoav's register applied 2026-09-27 (WP8).** The reward hack above could have been tuned away (raise β, stop at step 25) for a modest, respectable improvement. It was kept, and the notebook's discussion was rebuilt around it, because a *measured* reward-hacking event with the instruments that catch it teaches more than a clean 5% gain — and because it vindicates the notebook's own opening claim that RL is good at producing numbers that go up for the wrong reasons. The test is not "does this look like a success" but "does the reader learn more from it". Reopening requires arguing the tidy result teaches more. |
+| — | **Pick a reward signal that is not maximised by the failure you are trying to prevent** | **Established 2026-09-28 (WP8 follow-up), and it is the most transferable thing the package produced.** Two candidate fixes for G1's reward hack were measured. A *fluency* term from the frozen pretrained model **failed completely** (G2): likelihood asks "is this text probable", repetition is probable, so the gate sat at 0.99 and never engaged — and the calibration says so in 20 seconds without training, because the model scores its own word-stuffed text (0.71 nats/token) as *more likely* than human stories (0.95). An **LLM judge** asks "is this a coherent story", which the hack cannot satisfy by construction, and it separates cleanly (G3). The rule generalises past this notebook: before building a reward term, ask whether the failure mode you are targeting *increases* the signal you chose. |
+| — | **The judge is a specification too, and that is the exercise** | **Yoav 2026-09-28, correcting register.** The instinct after G3 was to ablate the judge prompt across variants and report robustness — research apparatus. This is a workshop: keep the prompt simple and instructive and let the students change it, which teaches "you get what you asked for" one level up. Three prompt decisions, all Yoav's and all improvements: **the judge does not see the required words** (`words_present` already checks those, and telling the judge makes the two instruments correlated by construction rather than independent); **one question, not three** (a compound coherence/grammar/naturalness rating collapsed into one digit hides a weighting nobody chose); and **neutral anchors** — "1 (no) to 5 (yes)", not "1 = word salad", which tells a judge grading word salad what to say. Measured: the blinded prompt separates *better*, lifting human stories from 4,3 to 5,5. |
 
 ### Environment facts verified 2026-09-20
 - 2× NVIDIA RTX A4000, 16 GB each — but **nothing in this repo is multi-GPU** (no `pmap`,
@@ -1367,6 +1374,55 @@ Full results in `runs.md` **G1**. What this package decided, as distinct from wh
 longest prompt, so 83% of eval prompts have ground-truth stories longer than the budget. Much
 better than the old 80, not budget-neutral; the notebook says so rather than claiming it is.
 
+### WP-J — the LLM judge as a third instrument  🔬 **probes done/running 2026-09-28, integration undecided**
+
+Yoav's idea: `minisweagent.ipynb` already depends on a local Ollama model, so a judge is
+free here. It is the first thing tried this session that actually addresses G1's reward hack.
+
+**What is measured** (`runs.md` G3, and G4 in flight):
+
+- **As an evaluation column it is decisive.** `words_present` says GRPO beats SFT by
+  **+0.521**; the judge says it is **−0.30 ± 0.08 worse** (≈3.8 SE) — the two disagree in
+  *sign* and are uncorrelated (r = −0.11). The judge also separates the human stories
+  cleanly (84% score ≥4, against GRPO's 10%), which is the sanity check that makes the rest
+  readable. Cost **0.5 s per judgement**, so 384 judgements ≈ 3 min.
+- **In-loop is viable, and my objections to it were wrong.** I argued cost, dependency and
+  reproducibility; all three were weak (parallelism cuts cost ~8×; the repo already depends
+  on Ollama; and §6's bit-reproducibility is a claim about the *evaluation*, which stays
+  `words_present`). The real risk was granularity — a 1–5 integer judge might give a group
+  of G=8 completions identical scores and produce no gradient. **Measured: it does not.**
+  Judge dead-group rate ≈25%, comparable to `words_present`'s, and critically the judge is
+  *live on groups where `words_present` has saturated and gone dead* — it supplies gradient
+  exactly where the word reward has run out. G4 trains 150 steps on
+  `reward = words_present × (judge − 1)/4`, multiplicative so neither factor can buy the
+  other.
+
+**The decision still open:** where this lands in `nanochat-grpo.ipynb`.
+
+- [ ] **Evaluation column** — ~3 min, guarded so the cell skips with a clear message when
+      Ollama is unreachable, so the notebook still runs standalone. Turns §10's "the only
+      instruments that saw it were the ceiling and your own eyes" into a measured third
+      column. **Low risk, high value; this is the one I would do.**
+- [ ] **In-loop reward** — depends on G4. If it lands at or below the 0.820 ceiling with
+      required-word mentions falling toward ground truth's 4.4, it is the first reward in
+      this series that works, and that is a much better ending than three failures. Costs
+      ~35 min of runtime and makes Ollama a hard dependency for *training*, not just for one
+      column.
+- [ ] Either way: **changing the judge prompt is an exercise**, not an ablation table.
+- [ ] Whatever is adopted, the notebook must say that a judge is a proxy too. 9B judging 26M
+      is hard to game *because of the capability gap*, which is precisely the protection that
+      disappears as the policy gets stronger — cite Gao et al. (2022) on reward-model
+      over-optimisation, already in `runs.md` G3.
+
+**Operational, verified 2026-09-28:** `qwen3.5:9b` is pulled and Ollama 0.17.4 is serving on
+`localhost:11434`. It is a **thinking** model — a naive call returns an *empty* `response`
+with the whole `num_predict` budget spent on hidden reasoning. Pass `"think": false`. A
+failed judge call must not silently become a reward value (an early draft returned `1`, a
+real score, on timeout); return `None` and substitute the group mean so it contributes no
+advantage, and report the count.
+
+---
+
 ### WP-C — `nanochat-chat.ipynb`  ⚠ **reopened 2026-09-27 by WP7, widened by WP8**
 
 **WP8 adds two more breakages on top of WP7's five.** (a) `nanochat_grpo_best.pkl` is no
@@ -1445,6 +1501,30 @@ Deliberately deferred: the checkpoints it would publish do not exist in their fi
 yet. WP6 retrains nanochat under parameter-free QK-norm and the new train-split tokenizer,
 and WP7/WP8 regenerate SFT and GRPO on top of that. **Cutting a release before those land
 would publish artifacts that are wrong.** Do this once WP6–WP8 have settled.
+
+**The GRPO checkpoint needs a health warning in the release notes, and this is the note.**
+`checkpoints/nanochat_grpo_checkpoint.pkl` (step 150, written by WP8's run 6) is the
+**reward-hacked** policy: it scores 0.943 on word-constraint satisfaction against a 0.820
+ceiling by stuffing the required words, and its held-out language-modelling loss is **0.8384
+— worse than the *pretrained* model's 0.8340**, let alone SFT's 0.8247. That is the right
+artifact to ship *with `nanochat-grpo.ipynb`*, because the notebook's entire lesson is that
+failure and a reader needs the checkpoint that produced the numbers in front of them. It is
+the **wrong** artifact for anyone who loads a checkpoint expecting "the best nanochat":
+its prose is visibly worse than SFT's. Two consequences for the release:
+
+- Say so on the release page and in whatever the fetcher prints, in one line:
+  *"the GRPO checkpoint is deliberately the reward-hacked policy from §9–§10; for the best
+  conversational model use `nanochat_sft_best.pkl`."*
+- **Ship `nanochat_sft_best.pkl`, not just `nanochat_sft_checkpoint.pkl`.** The `_best` file
+  (step 1,000, val 0.6533) is what GRPO starts from and is the best chat model in the series;
+  `_checkpoint.pkl` is SFT's deliberately-overfit last step (1,986, val 0.6639), kept only so
+  the notebook can measure best-vs-overfit. The candidate list below names the wrong one.
+
+Also note the GRPO pickle carries `best_step`/`best_val`/`train_losses`/`val_log` inherited
+from the SFT run it was initialised from — those describe **SFT's** history, not GRPO's.
+Harmless, but do not surface them as GRPO metrics in any release tooling. There is no
+`nanochat_grpo_best.pkl` any more, by decision (see WP8): selecting the best of six
+estimates each carrying ±0.007 is selecting noise.
 
 - [ ] Decide the release tag and what goes in it. Current candidates, ~730 MB total:
       `bpe_tokenizer_train.pkl`, `nanochat_checkpoint.pkl`, `nanochat_sft_checkpoint.pkl`,
