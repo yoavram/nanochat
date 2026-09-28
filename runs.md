@@ -1310,14 +1310,14 @@ every 993.
 
 | steps | epochs | train | val | words found | all three |
 |---|---|---|---|---|---|
-| 993 | 3.0 | 0.582 | 0.6533 *(minimum at step 1,000)* | 0.427 | 0.094 |
+| 993 | 3.0 | 0.591 | 0.6533 *(minimum at step 1,000)* | 0.427 | 0.094 |
 | 1,986 | 6.0 | 0.486 | 0.6641 | 0.427 | 0.062 |
 | 2,979 | 9.0 | 0.435 | 0.6741 | 0.411 | 0.062 |
 | 3,972 | 12.0 | — | — | 0.479 | 0.078 |
 | 4,965 | 15.0 | — | — | 0.479 | 0.109 |
 
 **Answer: no.** Validation loss reaches its minimum of **0.6533 at step 1,000** and rises
-monotonically thereafter, while training loss keeps falling (0.582 → 0.426 by step 2,400).
+monotonically thereafter, while training loss keeps falling (0.591 → 0.426 by step 2,400).
 Thirty minutes would be ~10,000 steps, roughly ten times past the optimum.
 
 **And constraint satisfaction does not improve either** — it wanders between 0.411 and 0.479
@@ -1343,9 +1343,14 @@ which is a stronger determinism check on the training path than anything in S1.
 
 ---
 
-## G1 — GRPO on word-constraint satisfaction (WP8) · 2026-09-27 · **the reward went 0.46 → 0.94 past a 0.82 ceiling: a real reward hack, kept**
+## G1 — GRPO on word-constraint satisfaction (WP8) · 2026-09-27 · **the reward went 0.46 → 0.92 past a 0.82 ceiling: a real reward hack, kept**
 
-WP8's committed run. New ID prefix `G` for the GRPO notebook; `S*` is SFT, `N*` pretraining.
+The words-only GRPO result, **as it stands in the shipped notebook**. The numbers here have
+been re-measured several times: the notebook was re-executed seven times across WP8 and WP-J,
+and GPU nondeterminism moves the trained policy slightly each time (0.943 → 0.945 → 0.923 on
+words found, across the last three). The conclusions never moved. What is recorded below is
+always the *shipped* run; superseded figures are not kept, because they describe an artifact
+that no longer exists. New ID prefix `G` for the GRPO notebook; `S*` is SFT, `N*` pretraining.
 (Note for whoever indexes this file: `S1` is used twice — line ~416 for `sets.ipynb` under
 WP4, and line ~1194 for SFT under WP7. Not renumbered here, but do not cite "S1" unqualified.)
 
@@ -1360,17 +1365,18 @@ held-out prompts SFT never trained on either.
 | chance (SFT text, wrong words) | 0.022 ±0.006 | 0.000 |
 | pretrained | 0.119 ±0.009 | 0.000 |
 | SFT — where GRPO starts | 0.459 ±0.015 | 0.074 |
-| **GRPO, 150 steps** | **0.943 ±0.007** | **0.836** |
+| **GRPO, 150 steps** | **0.923 ±0.008** | **0.787** |
 | ground truth (ceiling) | 0.820 ±0.020 | 0.562 |
 
-Paired over the same prompts and the same sampling keys: **+0.484 ± 0.016**, 30.4 standard
-errors, 98% of prompts improved and none got worse. 150 steps = 4,800 generations in
-**32.1 min**; the whole notebook is ~40 min, about 40% of it evaluation.
+Paired over the same prompts and the same sampling keys: **+0.464 ± 0.016**, 29.1 standard
+errors, 99% of prompts improved and none got worse. 150 steps = 4,800 generations in
+**~32 min**; the notebook as a whole now runs ~85 min, because section 12 trains a second
+policy against the judge (see G5).
 
 **And it is a reward hack**, which is why the run was kept rather than retuned. The policy
 scores 0.126 *above* the stories the corpus itself provides. It gets there by using the three
-required words **8.59 times in total per completion** against **4.38** in the real stories
-and 2.76 under SFT, with a lower distinct-token ratio (0.582 vs 0.659 for ground truth). Three named
+required words **8.43 times in total per completion** against **4.38** in the real stories
+and 2.76 under SFT, with a lower distinct-token ratio (0.591 vs 0.659 for ground truth). Three named
 strategies, all visible in positionally-chosen samples:
 
 - inserting the word regardless of sense — asked for `jump, value, ashamed`: *"Tim was a
@@ -1396,7 +1402,7 @@ execution — there is no version of this that survives a re-run untouched.
 
 **The KL term did not stop it.** β = 0.04 (the DeepSeekMath value) held drift to ~0.059
 nats/token, and that was enough. The forgetting check prices the damage: held-out
-language-modelling loss **0.8247 after SFT → 0.8384 after GRPO**, worse than the *pretrained*
+language-modelling loss **0.8247 after SFT → 0.8388 after GRPO**, worse than the *pretrained*
 model's 0.8340. The RL stage spent SFT's fluency gain, and some of pretraining's, buying
 reward.
 
@@ -1431,10 +1437,10 @@ is what turned the plan's projected 8–12 h into ~40 min. `grpo_loss` padded an
 is why sampling was fixed first.
 
 **K > 1 is what makes clipping exist.** At K=1 the clipped fraction is exactly 0.0000 by
-construction (ρ ≡ 1). Measured after all 4 inner epochs: **0.0090** mean over the run, rising
+construction (ρ ≡ 1). Measured after all 4 inner epochs: **0.0094** mean over the run, rising
 to ~0.066 on the first step. Small, but non-zero and real.
 
-**Dead groups rise as the task is solved**: 0% early, **39.2% over the whole run**, because
+**Dead groups rise as the task is solved**: 0% early, **33.7% over the whole run**, because
 groups increasingly score all-1.0. A high dead fraction late is not a bug, it is the signal
 that the reward has been saturated.
 
@@ -1565,9 +1571,9 @@ of the *real stories'* own NLL, so the bar is set by the corpus rather than inve
 | **GRPO, composite reward** | **0.954 ±0.007** | 0.990 | 0.944 | 0.867 |
 | ground truth (ceiling) | 0.820 | **0.707** | — | 0.562 |
 
-150 steps, 25.1 min. G1 (words-only) reached 0.943; G2 reached **0.954** — no better, and
+150 steps, 25.1 min. G1 (words-only) reached 0.923; G2 reached **0.954** — no better, and
 still 0.134 above the ceiling. Required-word mentions 8.53 against ground truth's 4.38
-(G1: 8.59); distinct/token 0.595 against 0.659 (G1: 0.582). The gate never engaged.
+(G1: 8.43); distinct/token 0.595 against 0.659 (G1: 0.591). The gate never engaged.
 
 ### Why, and the number that predicts it before you train
 
@@ -1590,10 +1596,10 @@ Price the measured symptom, not a proxy for it, and keep the multiplicative stru
 
 ```
 reward = words_present(text) * mention_gate(text)     # thresholds from the corpus:
-                                                      # ground truth 4.38 mentions, hacked 8.59
+                                                      # ground truth 4.38 mentions, hacked 8.43
 ```
 
-or a distinct-token floor (ground truth 0.659, hacked 0.582). Both are *also* surface
+or a distinct-token floor (ground truth 0.659, hacked 0.591). Both are *also* surface
 statistics and therefore also gameable — mention each word once and pad with varied filler —
 so the honest framing is that at 26 M parameters you choose which failure you can live with.
 The general answer is a learned reward model or human evaluation, which is where production
@@ -1601,10 +1607,181 @@ RLHF actually spends its effort.
 
 **Second, independent reason the composite structure is right:** `words_present` *saturates*.
 Once the policy reliably lands all three words there is no gradient left, which is what G1's
-39.2% dead-group fraction is. A reward with a continuous quality term cannot saturate.
+33.7% dead-group fraction is. A reward with a continuous quality term cannot saturate.
 
 ### What goes in the notebook
 
 The calibration, not the training run — it is the stronger argument (a property of the
 signal, not of one run) and costs 20 seconds against 25 minutes. G2's outcome is cited here
 in one line rather than re-run in the notebook, which keeps it at ~40 min.
+
+---
+
+## G3 — an LLM judge as the third instrument · 2026-09-28 · **the judge and the reward disagree in sign: GRPO is +0.52 on the reward and −0.30 on the judge**
+
+Yoav's suggestion: `minisweagent.ipynb` already depends on a local Ollama model, so a judge is
+available here for free. Probe (`scratchpad/judge_full.py`) regenerates the committed
+notebook's own evaluation completions — deterministic, same keys, so they are the texts in
+the shipped notebook — and scores them with **`qwen3.5:9b`** at temperature 0:
+
+> Here is a story written for a 4-year-old:
+>
+> {story}
+>
+> Does it make sense, and is the grammar correct?
+> Rate it from 1 (no) to 5 (yes). Answer with one digit. Answer:
+
+Three deliberate choices, all Yoav's, all measured improvements. **The judge does not see the
+required words** — `words_present` already checks those, and telling the judge makes the two
+instruments correlated by construction instead of independent. **One question, not three.**
+**Neutral anchors** ("1 (no) to 5 (yes)"), because "1 = word salad" tells a judge grading word
+salad what to answer.
+
+| | words_present | judge 1–5 | judge ≥4 | judge ≤2 |
+|---|---|---|---|---|
+| SFT | 0.427 | **3.22** | 0.49 | 0.32 |
+| GRPO | **0.948** | **2.39** | 0.12 | 0.70 |
+| ground truth | 0.820 | **4.34** | 0.97 | 0.02 |
+
+**Paired over the same 128 prompts, the judge says GRPO is −0.83 ± 0.10 *worse* than SFT
+(≈8 SE), while `words_present` says it is +0.521 better.** The two metrics are negatively
+correlated across both policies (**r = −0.41**). The reward's entire claimed gain is
+invisible to — in fact inverted by — an instrument that asks whether the output is a story.
+
+The judge is not merely noise: it separates the human stories almost perfectly (4.34, with
+**97%** scoring ≥4 against GRPO's **12%**), which is the sanity check that makes the rest
+readable.
+
+**These numbers are from the second, blinded prompt** (below). The first version — which told
+the judge which words had been required, asked about coherence, grammar *and* natural word
+use in a single digit, and anchored the low end as "word salad" — gave a weaker separation
+(SFT 2.74, GRPO 2.44, ground truth 3.95; paired −0.30 ± 0.08, r = −0.11). Superseded, kept
+here because the size of the difference is the point: **the prompt is part of the
+instrument.**
+
+### Why this works where the pretrained-likelihood term (G2) did not
+
+Likelihood asks *is this text probable*, and repetition is probable — so the fluency gate sat
+at 0.99 and never engaged. The judge asks *is this a coherent story*, which is a different
+question, and one the hack cannot satisfy by construction. **The lesson is not "use an LLM
+judge", it is "pick a signal that is not maximised by the failure you are trying to prevent".**
+
+### Costs, measured
+
+- **0.5 s per judgement** on this box; 384 judgements = **3.2 min**. As an evaluation column
+  this is nearly free.
+- As the *training* reward it is 4,800 calls ≈ 40 min on top of the existing 40, plus Ollama
+  becomes a hard dependency and the run stops being reproducible — which would cost §6 its
+  bit-reproducibility, currently one of the notebook's stronger claims.
+- `qwen3.5:9b` is a **thinking** model: a naive Ollama call returns an *empty* `response`
+  with the whole `num_predict` budget spent on hidden reasoning. Pass `"think": false`.
+  This cost a confusing first probe and is worth not rediscovering.
+
+### Caveats, so nobody over-reads the table
+
+Single judge, single prompt template, one completion per prompt (n=128, not the notebook's
+512 — hence SFT 0.427 here against the notebook's 0.459, which averages 4 completions).
+Ratings are ordinal, so the ±0.08 on a 1–5 scale is indicative; the ≥4 / ≤2 columns tell the
+same story more robustly. And a judge is a **proxy too** — 9B judging 26M is hard to game
+only because of the capability gap, which is exactly the protection that disappears as the
+policy gets stronger. Gao et al. (2022) is the reference for what happens then.
+
+---
+
+## G4 — the judge *in the training loop* · 2026-09-28 · **it largely fixes the hack: repetition falls to near-human and dead groups vanish, but the ceiling is still crossed**
+
+`reward = words_present × (judge − 1)/4`, multiplicative so neither factor can be bought with
+the other. 150 steps, same hyperparameters as G1, judge calls through an 8-way thread pool.
+**Evaluation deliberately stays `words_present` with fixed keys**, so it remains
+bit-reproducible and directly comparable with G1 and G2 — the judge changes the reward, not
+the ruler.
+
+| | words found | judge 1–5 | req-word uses | distinct/token |
+|---|---|---|---|---|
+| SFT | 0.459 | 3.22 | 2.76 | 0.627 |
+| **G1, words-only reward** | **0.923** | **2.39** | **8.43** | **0.591** |
+| **G4, words × judge** | **0.854 ±0.011** | **3.72** | **4.75** | **0.620** |
+| ground truth (ceiling) | 0.820 | 4.34 | 4.38 | 0.659 |
+
+**What it fixed.** Required-word mentions fall from 8.43 to **4.75**, against ground truth's
+4.38 — essentially human. Vocabulary diversity recovers most of the gap (0.591 → 0.620 against
+0.659). The judge score rises from 2.39 to **3.72**, past SFT's 3.22 and most of the way to the
+human 4.34. And **the dead-group fraction is 0.00 at every logged step**, against G1's 33.7%:
+the judge's finer-grained signal removes the saturation that was throwing away two rollouts in
+five. 40.5 min, **0 failed judge calls**.
+
+**What it did not fix.** Words found is **0.854 ±0.011, still above the 0.820 ceiling** —
+though the overshoot drops from +0.123 to +0.034, about 72% of it gone. The text still shows
+forced insertion: *"Fluffy found a value toy"*, *"a ordinary cat"*. So the honest verdict is
+**better, not solved** — which is a more useful ending than either a clean failure or a clean
+fix, because it is what actually happens when you improve a specification.
+
+Both signals rose together over training (judge 3.09 → 4.28, words 0.49 → 0.93), which is the
+behaviour the multiplicative form is supposed to produce and did.
+
+### The arc these four runs make
+
+| | reward | result |
+|---|---|---|
+| G1 | words only | hacked: 0.923 vs a 0.820 ceiling, 8.43 mentions |
+| G2 | words × pretrained likelihood | **no effect** — the signal is maximised by the failure |
+| G3 | judge as *evaluation* | reveals it: the two metrics disagree in sign |
+| G4 | words × judge | 0.854, near-human repetition and diversity, no dead groups |
+
+The through-line is the lesson in `plan.md`: **pick a signal that is not maximised by the
+failure you are trying to prevent.** Likelihood is; a judge is not.
+
+**Caveat that must travel with any of this.** A 9B judge scoring a 26 M policy is hard to game
+largely because of the capability gap, and 150 steps is short. "It was not hacked here" is not
+"it cannot be hacked" — Gao et al. (2022) is the reference for what over-optimisation against a
+reward model looks like when you push harder, and the notebook should say so wherever this
+lands.
+
+---
+
+## G5 — the judge, in the notebook · 2026-09-28 · **overshoot +0.102 → +0.008, dead groups 33.7% → 0.0%; shipped**
+
+Yoav's call: put the judge in the training loop rather than only in the evaluation. This is
+the notebook's own run (execution 7), not a probe — sections 11 and 12 of
+`nanochat-grpo.ipynb`. G3 and G4 were the probes that justified it.
+
+**Section 11, the judge as an instrument.** 384 judgements in 1.1 min, 0 failed.
+
+| | words found | judge 1–5 | judge ≥4 | judge ≤2 |
+|---|---|---|---|---|
+| SFT | 0.427 | 3.22 | 0.49 | 0.32 |
+| GRPO, words only | 0.924 | 2.34 | 0.12 | 0.75 |
+| ground truth | 0.820 | **4.34** | **0.97** | 0.02 |
+
+`words_present` says GRPO improved by **+0.497**; the judge says it got **−0.875 ± 0.108
+worse**; the two are negatively correlated (**r = −0.445**).
+
+**Section 12, the judge in the loop.** `reward = words_present × (judge − 1)/4`, 150 steps
+from a fresh copy of the SFT policy, **34.7 min**, 0 failed judge calls.
+
+| | words found | judge | req-word uses | distinct/token |
+|---|---|---|---|---|
+| SFT | 0.459 | 3.22 | 2.76 | 0.627 |
+| GRPO, words only | 0.923 | 2.34 | 8.43 | 0.591 |
+| **GRPO, words × judge** | **0.828** | **3.66** | **4.95** | 0.601 |
+| ground truth | 0.820 | 4.34 | 4.38 | 0.659 |
+
+- **Ceiling overshoot +0.102 → +0.008** — inside the ceiling's own standard error.
+- **Dead groups 33.7% → 0.0%**, every step. The four-valued reward saturates once the policy
+  lands all three words; a finer signal keeps every group alive. This is a second, independent
+  reason to prefer it, unrelated to hacking.
+- Repetition falls to near-human (4.95 against 4.38); the judge score passes SFT's.
+- **Vocabulary barely moves** (0.591 → 0.601 against 0.659), and the completions are better
+  rather than good: *"a value of ashtrays"*, *"put his cliff near the cliff"*. Substantially
+  better specification, not a solved problem.
+
+**Cost of shipping it:** the notebook goes from ~40 to ~85 min and gains an Ollama dependency
+for sections 11–12, guarded by a `JUDGE_OK` probe so the rest still runs without it. Source is
+~27.6k tokens, past the point where `Read`/`NotebookEdit` work at all — every edit from here is
+through the `nbformat` API with hard validation, and the clear → edit → re-execute route costs
+85 minutes.
+
+**Bug the rehearsal caught, worth not repeating:** `json` was never imported in the notebook.
+The probe scripts imported it at the top; nothing in the notebook needed it before section 11.
+`ast.parse` passes on every cell — a `NameError` is a runtime failure — so only execution finds
+it. **Rehearse whenever the cell inventory changes, not only when the logic looks risky.**

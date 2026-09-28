@@ -31,7 +31,7 @@ which caught out the prose three separate times. The shipped numbers are run 6's
 
 | package | state | note |
 |---|---|---|
-| **WP-J** judge as an instrument | 🔬 **probe running** | Yoav's idea, and it works — see below and `runs.md` G3/G4. Decide whether it lands in the notebook |
+| **WP-J** judge in the notebook | ✅ **done 2026-09-28**, not yet committed | Yoav's idea and Yoav's call to put it in the training loop. Sections 11–12 of `nanochat-grpo.ipynb`; `runs.md` G3/G4/G5 |
 | **WP-C** `nanochat-chat.ipynb` | ⚠ **reopened** | WP7 invalidated five cells; WP8 has now also changed which GRPO checkpoint exists |
 | WP-N | ⬜ not started | only `text-transformer.ipynb` is genuinely stuck |
 | WP9 `minisweagent.ipynb` | ⬜ not started | independent of the nanochat chain |
@@ -52,8 +52,8 @@ loudly**, which is the intended outcome: WP-C must point at
    elsewhere. Cite "S1" only with its subject attached.
 
 **WP8's headline, because it changes what the notebook teaches:** GRPO took held-out
-constraint satisfaction from **0.459 to 0.943** — and the ground-truth ceiling is **0.820**.
-The policy beat the data by using the three required words 8.6 times in total per
+constraint satisfaction from **0.459 to 0.923** — and the ground-truth ceiling is **0.820**.
+The policy beat the data by using the three required words 8.4 times in total per
 completion (vs 4.4 in real stories), welding it to a noun and making it the subject, and inserting it where it
 makes no sense; the forgetting check shows language-modelling loss *worse than the
 pretrained model*. **This is a genuine reward
@@ -139,7 +139,7 @@ scripts importing `nanochat_model` or `bpe`.
 | — | **Rehearse a long run at tiny scale first** | **Established 2026-09-26 (WP6).** Before a 2.3 h `nbconvert --execute`, the whole notebook was run end to end at `n_steps=200` on a throwaway copy. It found nothing — and was still worth its ten minutes, because it is the only way to learn that the `inspect.getsource` module-emission cell works under `nbconvert`, that the post-training cells run in the order they appear, and that no late cell references a name defined below it. A failure in the last cell of a long run costs the whole run. Two caveats learned: a rehearsal **writes to the same checkpoint paths as the real run**, and executing cells by `exec` on their source (rather than through a kernel) breaks `inspect.getsource`, so that one cell can only be tested through a real kernel. |
 | — | **Measure the mechanism, not just the outcome** | **Established 2026-09-26 (WP6).** The QK-norm A/B produced a 0.432-nat loss gap, which on its own would only say "the fix helped". The number that *explains* it is the attention entropy ratio: **0.9995 under unit-L2, uniform to within 0.05% in every layer**, exactly as the arithmetic predicted, against 0.668 under RMS. A loss gap is evidence; a mechanism measurement is an explanation, and it is what turns a fix into teaching material. Cheap to add to any A/B — instrument the quantity your hypothesis is *about*. |
 | — | **Ceilings before blame** | Established in WP4, generalisable. Before attributing a model's failure to its architecture, compute what the *task* permits — WP4's suit-blind ceiling (99.82% / 7-of-9) was derived from the data in three lines with no model, and predicted the trained Set Transformer's score exactly. Cheap, and it converts an unexplained blemish into the notebook's strongest claim. Worth asking in WP6–WP8 too. |
-| — | **Check the result against the ceiling, not against zero** | **Established 2026-09-27 (WP8), and it is the lesson of the package.** GRPO improved held-out constraint satisfaction from 0.459 to 0.943 — 30 standard errors, 98% of prompts improved, every statistic immaculate — by *beating the ground-truth ceiling of 0.820*, which is only possible if it is doing a different task than the one intended. It was: using the three required words 8.6 times in total per completion against 4.4 in real stories, welding it to a noun and making it the subject, and inserting it where it makes no sense ("the only infant in the famous infant", scoring 1.00). **The entire measurement apparatus (fixed prompt set, shared keys, clustered SE, paired difference) worked perfectly and bought precision about the wrong quantity.** Only two things caught it, neither a statistic about the reward: the ceiling row, and reading the output. Compute what the task permits *before* training, put it in the same table as the result, and read it last. Generalises WP4's "ceilings before blame". |
+| — | **Check the result against the ceiling, not against zero** | **Established 2026-09-27 (WP8), and it is the lesson of the package.** GRPO improved held-out constraint satisfaction from 0.459 to 0.923 — 29 standard errors, 99% of prompts improved, every statistic immaculate — by *beating the ground-truth ceiling of 0.820*, which is only possible if it is doing a different task than the one intended. It was: using the three required words 8.4 times in total per completion against 4.4 in real stories, welding it to a noun and making it the subject, and inserting it where it makes no sense ("the only infant in the famous infant", scoring 1.00). **The entire measurement apparatus (fixed prompt set, shared keys, clustered SE, paired difference) worked perfectly and bought precision about the wrong quantity.** Only two things caught it, neither a statistic about the reward: the ceiling row, and reading the output. Compute what the task permits *before* training, put it in the same table as the result, and read it last. Generalises WP4's "ceilings before blame". |
 | — | **A failed run can be the better artifact — decide on teaching value, not tidiness** | **Yoav's register applied 2026-09-27 (WP8).** The reward hack above could have been tuned away (raise β, stop at step 25) for a modest, respectable improvement. It was kept, and the notebook's discussion was rebuilt around it, because a *measured* reward-hacking event with the instruments that catch it teaches more than a clean 5% gain — and because it vindicates the notebook's own opening claim that RL is good at producing numbers that go up for the wrong reasons. The test is not "does this look like a success" but "does the reader learn more from it". Reopening requires arguing the tidy result teaches more. |
 | — | **Pick a reward signal that is not maximised by the failure you are trying to prevent** | **Established 2026-09-28 (WP8 follow-up), and it is the most transferable thing the package produced.** Two candidate fixes for G1's reward hack were measured. A *fluency* term from the frozen pretrained model **failed completely** (G2): likelihood asks "is this text probable", repetition is probable, so the gate sat at 0.99 and never engaged — and the calibration says so in 20 seconds without training, because the model scores its own word-stuffed text (0.71 nats/token) as *more likely* than human stories (0.95). An **LLM judge** asks "is this a coherent story", which the hack cannot satisfy by construction, and it separates cleanly (G3). The rule generalises past this notebook: before building a reward term, ask whether the failure mode you are targeting *increases* the signal you chose. |
 | — | **The judge is a specification too, and that is the exercise** | **Yoav 2026-09-28, correcting register.** The instinct after G3 was to ablate the judge prompt across variants and report robustness — research apparatus. This is a workshop: keep the prompt simple and instructive and let the students change it, which teaches "you get what you asked for" one level up. Three prompt decisions, all Yoav's and all improvements: **the judge does not see the required words** (`words_present` already checks those, and telling the judge makes the two instruments correlated by construction rather than independent); **one question, not three** (a compound coherence/grammar/naturalness rating collapsed into one digit hides a weighting nobody chose); and **neutral anchors** — "1 (no) to 5 (yes)", not "1 = word salad", which tells a judge grading word salad what to say. Measured: the blinded prompt separates *better*, lifting human stories from 4,3 to 5,5. |
@@ -284,9 +284,17 @@ two things checked hardest.
 - **Have a package reviewed adversarially before closing it**, split by dimension, and
   require the reviewers to state what they checked and found correct as well as what
   they found wrong.
-- **`runs.md` is the experiment log and is committed; this file is the plan and is not.**
-  Results go in `runs.md`, append-only, superseded numbers kept with a note. Decisions,
-  package state and reversals go here. Do not duplicate a results table across both.
+- **Both files are committed, and they divide by *kind*, not by whether they are tracked**
+  (Yoav 2026-09-28, correcting an earlier line here that said `plan.md` was not committed —
+  it always has been). **`plan.md` holds the plan**: what was done, what is left, decisions
+  and reversals. **`runs.md` documents jobs** — running and finished — why each was run and
+  what came back, append-only, superseded numbers kept with a note. Do not duplicate a
+  results table across both.
+- **Neither file is student-facing, and no notebook may reference either** (Yoav
+  2026-09-28). They are development artefacts. A notebook that says "see `runs.md` C5" is
+  pointing a student at something they do not have and should not need; state the number, or
+  say "a cluster sweep not run here", and stop. **Six notebooks currently violate this** —
+  see the cross-cutting note in WP-N.
 
 ---
 
@@ -690,6 +698,27 @@ the pattern repeated: both were curves read past their last measured point.
 "The transformer improves monotonically" died on depth 3 → 4 (+0.024, 3σ), and "sits on a
 curve still descending" died on C7 (the optimum is depth 6; 8 and 12 are worse). Corrected
 in `40bf38d` and, for the C7 half, **not yet** — see the open item below.
+
+---
+
+### Cross-cutting — remove `runs.md` / `plan.md` references from notebooks  ⬜ 2026-09-28
+
+Neither file is student-facing. Audit on 2026-09-28 found references in six notebooks.
+Fixed immediately (prose or comment only, committed outputs untouched): `nanochat-grpo.ipynb`,
+`nanochat-sft.ipynb`, `nanochat.ipynb`.
+
+**Still outstanding, because the string is printed in committed output and the fix therefore
+needs a re-execution** (57 / 78 / 18 min respectively — fold into WP-N rather than paying it
+twice):
+
+| notebook | where |
+|---|---|
+| `RNN.ipynb` | cell 13 prose; cell 54 prose **and** a printed `'(cluster job; see runs.md C5).'` |
+| `GRU.ipynb` | cell 5 prose; cell 42 prose **and** the same printed string |
+| `text-transformer.ipynb` | cell 5, 44 prose **and** the same printed string |
+
+Replacement wording: name the measurement, not the log — "a 27-run cluster sweep, not run in
+this notebook" — so the sentence stands on its own for a reader who has only the notebook.
 
 ---
 
@@ -1334,7 +1363,7 @@ to what this plan and `CLAUDE.md` previously implied — see WP-N below.
 
 ---
 
-### WP8 — `nanochat-grpo.ipynb`  ✅ **done 2026-09-27** — 0.459 → 0.943 against a 0.820 ceiling: a reward hack, kept deliberately
+### WP8 — `nanochat-grpo.ipynb`  ✅ **done 2026-09-27** — 0.459 → 0.923 against a 0.820 ceiling: a reward hack, kept deliberately
 
 Full results in `runs.md` **G1**. What this package decided, as distinct from what it measured:
 
@@ -1354,7 +1383,7 @@ Full results in `runs.md` **G1**. What this package decided, as distinct from wh
   **Consequence for WP-C:** `nanochat_grpo_best.pkl` is no longer produced, and the copy on
   disk is pre-WP6 and invalid. WP-C must stop loading it.
 - **K = 4 inner epochs**, which is the only reason the clipped surrogate does anything: at
-  K=1 the clipped fraction is exactly 0 by construction. Measured 0.0090 after all four.
+  K=1 the clipped fraction is exactly 0 by construction. Measured 0.0094 after all four.
 - **The run was kept rather than retuned.** Beating the ceiling by 0.126 is a failure of the
   *specification*, and the notebook now teaches that: §10 names the three strategies the
   policy found, prices the damage with the forgetting check, and says plainly that the
@@ -1374,7 +1403,7 @@ Full results in `runs.md` **G1**. What this package decided, as distinct from wh
 longest prompt, so 83% of eval prompts have ground-truth stories longer than the budget. Much
 better than the old 80, not budget-neutral; the notebook says so rather than claiming it is.
 
-### WP-J — the LLM judge as a third instrument  🔬 **probes done/running 2026-09-28, integration undecided**
+### WP-J — the LLM judge, in the notebook  ✅ **done 2026-09-28** — overshoot +0.102 → +0.008, dead groups 33.7% → 0.0%
 
 Yoav's idea: `minisweagent.ipynb` already depends on a local Ollama model, so a judge is
 free here. It is the first thing tried this session that actually addresses G1's reward hack.
@@ -1397,7 +1426,19 @@ free here. It is the first thing tried this session that actually addresses G1's
   `reward = words_present × (judge − 1)/4`, multiplicative so neither factor can buy the
   other.
 
-**The decision still open:** where this lands in `nanochat-grpo.ipynb`.
+**Decided by Yoav 2026-09-28: the judge goes in the training loop**, not only in the
+evaluation. Shipped as sections 11 (the judge as an instrument) and 12 (the judge as the
+reward), with section 13 rewritten as a four-reward synthesis. Results in `runs.md` G5.
+My recommendation had been evaluation-only on cost grounds; the in-loop result is better
+than the probe suggested (+0.008 against the ceiling, against G4's +0.034) and the arc it
+gives the notebook — hacked, wrong fix, detected, mostly fixed — is worth the runtime.
+
+**What it cost:** the notebook goes ~40 → ~85 min, gains an Ollama dependency for §§11–12
+(guarded: without it those cells print how to enable them and skip), and its source is now
+~27.6k tokens, so `Read`/`NotebookEdit` cannot touch it at all — `nbformat` plus hard
+validation from here, and any prose fix that needs re-execution costs 85 minutes.
+
+**Superseded, for the record:**
 
 - [ ] **Evaluation column** — ~3 min, guarded so the cell skips with a clear message when
       Ollama is unreachable, so the notebook still runs standalone. Turns §10's "the only
@@ -1504,8 +1545,8 @@ would publish artifacts that are wrong.** Do this once WP6–WP8 have settled.
 
 **The GRPO checkpoint needs a health warning in the release notes, and this is the note.**
 `checkpoints/nanochat_grpo_checkpoint.pkl` (step 150, written by WP8's run 6) is the
-**reward-hacked** policy: it scores 0.943 on word-constraint satisfaction against a 0.820
-ceiling by stuffing the required words, and its held-out language-modelling loss is **0.8384
+**reward-hacked** policy: it scores 0.923 on word-constraint satisfaction against a 0.820
+ceiling by stuffing the required words, and its held-out language-modelling loss is **0.8388
 — worse than the *pretrained* model's 0.8340**, let alone SFT's 0.8247. That is the right
 artifact to ship *with `nanochat-grpo.ipynb`*, because the notebook's entire lesson is that
 failure and a reader needs the checkpoint that produced the numbers in front of them. It is
