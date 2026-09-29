@@ -18,8 +18,11 @@ not only at the end of one.
 ## START HERE — state as of 2026-09-29
 
 **Done, committed and pushed:** WP0, WP1, WP2, WP3, WP4, WP5, WP-T, WP6, WP7, **WP8**,
-**WP-J**, **WP-C**. Branch `revision2026` is in sync with origin at `62cd656`. Nothing is
-waiting to go out and no background job is running.
+**WP-J**, **WP-C**, **WP9**. **WP10 is done 2026-09-29 and not yet committed** — the only
+dirty file is `index.ipynb`. No background job is running.
+
+**What is left after WP10:** **WP-N** (Yoav, manually, issue #5) and **WP-R** (the checkpoint
+release, deferred to near delivery). Nothing else in this file is open.
 
 **WP-C closed 2026-09-29** — `nanochat-chat.ipynb` rebuilt on WP7/WP8/WP-J, executed, and
 `index.ipynb`'s Inference *and* GRPO lines brought up to date with it (that was WP10's first
@@ -49,7 +52,7 @@ the new output before committing.
 |---|---|---|
 | WP-N | ⬜ not started — **issue #5**, Yoav is doing it manually | **`RNN.ipynb` is stuck too**: measured 2026-09-29, stripped source is 25,670 tokens against text-transformer's 25,783. The "only text-transformer" claim below is superseded |
 | WP9 `minisweagent.ipynb` | ✅ **done 2026-09-29** | all 10 items; outputs cleared, runs interactively by design |
-| WP10 `index.ipynb` rewrite | ⬜ do last | WP-C refreshed the GRPO and Inference lines; the rest of the page is untouched |
+| WP10 `index.ipynb` rewrite | ✅ **done 2026-09-29** | outcomes, arc, per-notebook hardware/time/prereq table, dependency diagram; times read from committed execution metadata |
 | WP-R checkpoint release | ⬜ deferred | near delivery |
 
 **Resolved 2026-09-27:** `checkpoints/nanochat_grpo_best.pkl` has been **deleted** (Yoav's
@@ -1684,14 +1687,51 @@ reference `[8]`. The payload writes a marker file to `/tmp`; it is deliberately 
 
 ---
 
-### WP10 — `index.ipynb` rewrite  ⬜ not started
-Last: it describes the result of everything above. Does 1.7 (1.1 is closed in WP3 by
-deleting the table). `index.ipynb` becomes navigation and orientation only — no results.
+### WP10 — `index.ipynb` rewrite  ✅ done 2026-09-29
+Last: it describes the result of everything above. Does 1.7 (1.1 was closed in WP3 by
+deleting the table). `index.ipynb` is navigation and orientation only — **no results, no
+numbers about models**; it says so in the page itself so a later session does not put them
+back.
 
-- [ ] Learning outcomes
-- [ ] Session arc: sets → recurrence → attention → tokenisation → pretraining → alignment → agents,
-      saying what each step adds
-- [ ] Time estimates, prerequisites, CPU/GPU annotation per notebook
+Four cells → seven, all markdown, 4.8 KB → 15.9 KB. `nbformat.validate` clean.
+
+- [x] Learning outcomes — a "what you will be able to do" list, verbs the reader can check
+      themselves against, including the two lessons the packages actually produced (read the
+      ceiling, not the delta; an approval gate must fail closed)
+- [x] Session arc — one paragraph per step saying what it adds that the previous could not:
+      sets → recurrence → attention → tokenisation → pretraining → alignment → inference →
+      agents
+- [x] Time estimates, prerequisites, CPU/GPU annotation — a table of all ten notebooks with
+      hardware, full-run wall-clock and what must be run first, plus a prerequisites section
+      and a dependency diagram
+- [x] Setup cell now names **both** Ollama consumers (GRPO's judge, not just the agent) and
+      carries the `qwen3.5:4b` fallback
+- [x] Jupyter tips: `gpustat` (a `pip install` into a pixi env) replaced by `nvidia-smi`
+
+**Times are measured, not estimated** — read from each committed notebook's own
+`metadata.execution` timestamps (sum of per-cell busy→reply), on the A4000:
+sets 47, RNN 57, GRU 78, text-transformer 22, bpe-tokenizer **1**, nanochat 128,
+nanochat-sft 13, nanochat-grpo 77, nanochat-chat 5 minutes. Worth keeping as a technique:
+it is the only runtime source that cannot go stale silently, because it ships with the
+outputs. (`RNN.ipynb`'s *span* is 19 h — the notebook was executed across sessions — so sum
+per-cell durations, never max-minus-min.)
+
+**One correction the writing forced.** The obvious dependency chain
+`bpe-tokenizer.ipynb → nanochat.ipynb` is wrong: `nanochat.ipynb` loads
+`bpe_tokenizer_train.pkl` and `train_tokens.npy`, which come from
+**`build_train_artifacts.py`**, not from the teaching notebook (whose default `CORPUS` is
+the valid split). The diagram in `index.ipynb` shows the script as its own step and says why
+it is a script. Nothing else on the page asserted a dependency that the notebooks do not.
+
+Also checked while writing, all fine as committed: every notebook link resolves; the
+character notebooks do use `data/shakespear3.txt`; both Ollama notebooks pin `qwen3.5:9b`;
+the BPE compression claim on the page is "roughly halves" against the measured 2.107×
+(an earlier draft said ~4×, which is the *other* direction's intuition, not this corpus's
+number).
+
+**Not done here, by decision:** `cluster/` is not mentioned on the page — it is course
+infrastructure for producing the sweeps, not a student path. And no checkpoint-download link
+yet; that is WP-R.
 
 ---
 
