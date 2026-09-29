@@ -1785,3 +1785,63 @@ through the `nbformat` API with hard validation, and the clear → edit → re-e
 The probe scripts imported it at the top; nothing in the notebook needed it before section 11.
 `ast.parse` passes on every cell — a `NameError` is a runtime failure — so only execution finds
 it. **Rehearse whenever the cell inventory changes, not only when the logic looks risky.**
+
+---
+
+## C1 — `nanochat-chat.ipynb` rebuilt on WP7/WP8/WP-J · 2026-09-29 · **inference only, no training; shipped**
+
+WP-C. The notebook was stale in seven places (five from WP7's chat-template change, two from
+WP8/WP-J) and still carried the repository's last hand-written copy of the model. Rewritten
+end to end, 26 cells, executed twice.
+
+**What it now measures**, all on the same 1,024 held-out examples the SFT and GRPO notebooks
+use, 32 prompts, one completion each, sampling keys shared across models:
+
+| | stopped on its own | mentions of the 3 words | distinct/token |
+|---|---|---|---|
+| pretrained | 16% | 0.75 | 0.670 |
+| SFT | **91%** | 3.19 | 0.621 |
+| GRPO, words only | 62% | **8.38** | 0.591 |
+| GRPO, words × judge | **100%** | 4.91 | 0.598 |
+| ground truth | — | 3.44 | 0.669 |
+
+- **Stopping is the new result and it was free.** Nobody specified it. SFT installed an ending
+  (16% → 91%) purely by ending every training response with `<|endoftext|>`; the words-only
+  reward *eroded* it back to 62%, because stopping ends the opportunity to earn per-word; the
+  judge restored it to 100%, because "is this a story?" has no reason to reward one that never
+  finishes. Three objectives, one unspecified behaviour, moved twice.
+- **The strict matcher does not cost every row equally**, which the notebook had claimed. Against
+  G5's inflection-aware counts the word-stuffing policy is unchanged (8.38 vs 8.43) while the
+  human stories drop about a fifth (3.44 vs 4.38). Repeating a bare lemma is exactly what a
+  word-boundary match pays full price for. This is G1's matcher argument measured from the other
+  side, and it is now the section.
+- **Shape stability, measured rather than asserted:** 25 tokens with a growing context 82.1 s
+  (3284 ms/token) against 0.12 s compiled (4.6 ms/token) — **707×**, and 35× counting the one
+  compile. Identical text under greedy decoding.
+- **`bpe_encode` honours a literal `<|endoftext|>` in user text**, so the reserved-id turn
+  boundary is forgeable from the data side. Demonstrated: 2 separators reach the model, 1 of
+  them the user's. At 26 M the model does not act on it — the notebook says so rather than
+  implying an exploit it did not get.
+
+**Three bugs the adversarial review caught, all of which would have shipped:**
+
+1. **The flagship timing measured nothing.** `next_token_logits` is module-level `@jax.jit` and
+   §3 had already warmed it, so "first call, one compile" printed 0.1 s against a 0.10 s warm
+   call. Fixed with an explicit `clear_cache()`. **A timing that flatters your argument is the
+   one to re-derive** — the row was self-evidently wrong (two identical numbers) and I wrote
+   prose around it anyway.
+2. **A flat 186-token budget where prompts run 19–61 tokens** turned "ran out of room" into "did
+   not stop", because the stop token comes last and is exactly what a short budget cuts. It
+   reported **SFT stopping 12%**; with a per-prompt budget the true figure is **91%**. The
+   confound is documented in `nanochat-sft.ipynb` Exercise 6 and I reintroduced it as the
+   measurement. Generalises: *a budget shared across unequal inputs is a covariate.*
+3. **"Under-counts every row by roughly the same amount"** — false, and false in the flattering
+   direction, which is the shape WP6's N4 warned about.
+
+**One reviewer finding that was itself wrong**, and worth recording because deferring to it would
+have inverted an exercise: the code review reported `<`, `|` and `>` absent from the vocabulary.
+They are all present (`clean_corpus` keeps printable ASCII). **Prefer a reviewer's diagnosis to
+its patch** extends to its facts — check the ones an exercise depends on.
+
+**Cost:** ~6 min per execution, no training, no figures. Source ~10.0k tokens, file 60 KB — well
+inside the `Read`/`NotebookEdit` limit, unlike `nanochat-grpo.ipynb`.
