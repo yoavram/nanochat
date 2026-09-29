@@ -15,23 +15,32 @@ not only at the end of one.
 
 ---
 
-## START HERE — state as of 2026-09-28, after WP8 and the reward-design probes
+## START HERE — state as of 2026-09-29
 
-**Done and committed:** WP0, WP1, WP2, WP3, WP4, WP5, WP-T, WP6, WP7, **WP8**.
-Numbers in `runs.md` G1, its karpathy addendum, and G2 (the reward probe).
+**Done, committed and pushed:** WP0, WP1, WP2, WP3, WP4, WP5, WP-T, WP6, WP7, **WP8**,
+**WP-J**. Branch `revision2026` is in sync with origin at `996861b`. Nothing is waiting to
+go out and no background job is running.
 
-**WP8 landed over three commits and six executions**, which is worth knowing before trusting
-any number: `242e275` and `4c54a35` were the first pass, then three review rounds forced
-re-executions (the clipping metric was measured before the update; the matcher paid for
-`carrier`/`bed`/`being`; `per_token_nll` scored an empty completion as perfectly fluent).
-**Every re-execution retrains the policy and changes both the numbers and the sample text**,
-which caught out the prose three separate times. The shipped numbers are run 6's.
+`nanochat-grpo.ipynb` is the current state of the art in this repo and the one to read first
+if you are picking this up cold: it trains twice (a words-only reward that gets hacked, then
+a judge-based reward that mostly fixes it) and takes **~85 min**. Results: `runs.md` G1
+(words-only, as shipped), G2 (the fluency term that failed), G3/G4 (judge probes), G5 (the
+shipped judge run).
+
+**Before trusting any number in it:** the notebook has been executed **seven** times.
+`242e275` + `4c54a35` were WP8's first pass; three adversarial review rounds forced
+re-executions (the clipping metric was read before the update, so it was 0 by construction;
+the matcher paid for `carrier`/`bed`/`being`; `per_token_nll` scored an empty completion as
+perfectly fluent); then WP-J added the judge. **Every re-execution retrains the policy and
+changes both the numbers and the sample text**, which made the prose stale four separate
+times — three of them caught by review rather than by me. The shipped numbers are run 7's.
+If you re-execute, re-derive every quoted completion and every number in the markdown from
+the new output before committing.
 
 **Open, in the order they probably want doing:**
 
 | package | state | note |
 |---|---|---|
-| **WP-J** judge in the notebook | ✅ **done and pushed 2026-09-28** (`c4edf61`) | Yoav's idea and Yoav's call to put it in the training loop. Sections 11–12 of `nanochat-grpo.ipynb`; `runs.md` G3/G4/G5 |
 | **WP-C** `nanochat-chat.ipynb` | ⚠ **reopened** | WP7 invalidated five cells; WP8 has now also changed which GRPO checkpoint exists |
 | WP-N | ⬜ not started | only `text-transformer.ipynb` is genuinely stuck |
 | WP9 `minisweagent.ipynb` | ⬜ not started | independent of the nanochat chain |
@@ -69,7 +78,8 @@ notebook's §10 is built on it. Full numbers and the three named strategies: `ru
 | `checkpoints/nanochat_best.pkl` | pretrained, val 0.8126 @ 63,000 | ~2 h (`nanochat.ipynb`) |
 | `checkpoints/nanochat_sft_best.pkl` | **SFT policy, step 1,000, val 0.6533 — GRPO starts here** | ~12 min |
 | `checkpoints/nanochat_sft_checkpoint.pkl` | SFT last step 1,986, val 0.6639, *deliberately overfit* | same run |
-| `checkpoints/nanochat_grpo_checkpoint.pkl` | **WP8's GRPO policy, step 150. The only one WP8 ships** | ~33 min |
+| `checkpoints/nanochat_grpo_checkpoint.pkl` | **the words-only GRPO policy, step 150 — the reward-hacked one, see WP-R** | ~33 min |
+| `checkpoints/nanochat_grpo_judge_checkpoint.pkl` | **the judge-trained policy, step 150 — the better model of the two** | ~35 min |
 | `checkpoints/sft_examples.npz` | 11,620 encoded SFT examples; last 1,024 held out, used by WP7 *and* WP8 | 6.7 min |
 | `checkpoints/bpe_tokenizer_train.pkl` + `train_tokens.npy` | tokenizer + 1.04B-token corpus | ~16 min |
 | `data/TinyStories-Instruct-valid.txt` | 26.9 MB | `python download_data.py` |
@@ -1567,9 +1577,13 @@ Harmless, but do not surface them as GRPO metrics in any release tooling. There 
 `nanochat_grpo_best.pkl` any more, by decision (see WP8): selecting the best of six
 estimates each carrying ±0.007 is selecting noise.
 
-- [ ] Decide the release tag and what goes in it. Current candidates, ~730 MB total:
-      `bpe_tokenizer_train.pkl`, `nanochat_checkpoint.pkl`, `nanochat_sft_checkpoint.pkl`,
-      `nanochat_grpo_checkpoint.pkl`. **`train_tokens.npy` is 2.08 GB — decide whether it
+- [ ] Decide the release tag and what goes in it. Current candidates, ~830 MB total:
+      `bpe_tokenizer_train.pkl`, `nanochat_checkpoint.pkl`, **`nanochat_sft_best.pkl`** (not
+      `_checkpoint.pkl` — see the warning above), `nanochat_grpo_checkpoint.pkl` **and
+      `nanochat_grpo_judge_checkpoint.pkl`**, which WP-J added: the judge-trained policy is
+      the better of the two GRPO models (0.828 words found against the 0.820 ceiling, judge
+      3.66 against 2.34) and the hacked one is only worth shipping because §§9–13 are about
+      it. Label them so nobody guesses. **`train_tokens.npy` is 2.08 GB — decide whether it
       ships or is rebuilt by `build_train_artifacts.py`** (16 min, needs the 2.23 GB
       download; rebuilding is probably the better trade)
 - [ ] A fetcher: a `download_data.py --checkpoints` flag or a small `fetch_checkpoints`
