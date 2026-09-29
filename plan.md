@@ -47,7 +47,7 @@ the new output before committing.
 
 | package | state | note |
 |---|---|---|
-| WP-N | ⬜ not started | only `text-transformer.ipynb` is genuinely stuck |
+| WP-N | ⬜ not started — **issue #5**, Yoav is doing it manually | **`RNN.ipynb` is stuck too**: measured 2026-09-29, stripped source is 25,670 tokens against text-transformer's 25,783. The "only text-transformer" claim below is superseded |
 | WP9 `minisweagent.ipynb` | ⬜ not started | independent of the nanochat chain |
 | WP10 `index.ipynb` rewrite | ⬜ do last | WP-C refreshed the GRPO and Inference lines; the rest of the page is untouched |
 | WP-R checkpoint release | ⬜ deferred | near delivery |
@@ -738,8 +738,19 @@ this notebook" — so the sentence stands on its own for a reader who has only t
 
 ---
 
-### WP-N — Get the character notebooks back under the edit limit  ⬜ not started
+### WP-N — Get the character notebooks back under the edit limit  ⬜ not started — **issue #5**
 Not in the review; created 2026-09-21 by a tooling constraint that now blocks WP2.
+
+> **Filed as issue #5 on 2026-09-29 and handed to Yoav, who is doing it manually.** The
+> issue carries the full measurement, the extraction target and the checklist; this section
+> stays as the rationale. **One correction measured while filing it: `RNN.ipynb` is over the
+> limit too** — 25,670 stripped tokens against `text-transformer.ipynb`'s 25,783, with
+> `GRU.ipynb` fine at ~18.8k. The "exactly and only `text-transformer.ipynb`" claim in the
+> scope note below is **superseded**: two of the three notebooks are unreachable, not one.
+> The table block is 142 lines / 6,250 chars and is byte-identical between `RNN` and `GRU`
+> (text-transformer differs in two comment lines), so extracting it buys ~2,070 tokens each
+> and puts both back under 25k. Ratio for future estimates: **~3.0 chars per token of
+> stripped source**, as against 3.4 for an executed notebook.
 
 > **Scope corrected 2026-09-27 (WP7).** The constraint is on a notebook's **source**, not on
 > its executed size, and this section's title has misled at least one session into trying to
@@ -1671,10 +1682,14 @@ contained in `revision2026`, so nothing is lost by deleting them.
       GitHub release.** Students have GPUs and are not expected to train in class.
       **The release itself is deferred — see WP-R below.**
 - [ ] Verify the non-Claude model names in `minisweagent.ipynb` cell 27 at delivery (11.8)
-- [ ] **GRU layer-norm ablation (5.2)** — keep the broken post-gate LN as a two-cell
-      ablation alongside the fix? The review rates it a good lesson. Yoav's call.
-      **Still un-ablated as of 2026-09-21**, and the plan's own rule was to run the ablation
-      before writing the prose.
+- [x] **GRU layer-norm ablation (5.2) — closed 2026-09-29, not doing it.** Yoav's call:
+      not interested in running the ablation. The post-gate layer norm stays as it is, and
+      `GRU.ipynb` keeps describing it honestly — the notebook already says it is nonstandard
+      rather than broken (LN is idempotent, so the carry path survives at z→0; what it costs
+      is state magnitude and two Jacobian directions), and Exercise 1 hands the three-variant
+      comparison to the reader. That is the right register for a workshop: the question is
+      posed, the measurement is the student's. Do not reopen as a WP-N sub-task — it is not a
+      prerequisite for anything, and WP-N must not grow a training run.
 - **C6/C7 notebook prose — delegated 2026-09-21, tracked as its own issue.** Not this
   file's business any more. For context: `4abebda` harvested both sweeps but left the prose
   alone, so `text-transformer.ipynb`'s conclusion still claims the depth curve is "still
