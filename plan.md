@@ -18,8 +18,8 @@ not only at the end of one.
 ## START HERE — state as of 2026-09-29
 
 **Done, committed and pushed:** WP0, WP1, WP2, WP3, WP4, WP5, WP-T, WP6, WP7, **WP8**,
-**WP-J**. **WP-C is committed locally at `25a255c` but NOT yet pushed** — push it or say why
-not. No background job is running.
+**WP-J**, **WP-C**. Branch `revision2026` is in sync with origin at `62cd656`. Nothing is
+waiting to go out and no background job is running.
 
 **WP-C closed 2026-09-29** — `nanochat-chat.ipynb` rebuilt on WP7/WP8/WP-J, executed, and
 `index.ipynb`'s Inference *and* GRPO lines brought up to date with it (that was WP10's first
@@ -1487,9 +1487,10 @@ Numbers, the stopping result and the review findings are in `runs.md` **C1**. Wh
 - [x] **Imports `nanochat_model` instead of pasting the model.** This was the repository's last
       hand-written copy; all four are now one definition. *Consequence not yet actioned:*
       `nanochat-sft.ipynb` cell 1 and `nanochat-grpo.ipynb` cell 1 both carry a comment saying
-      this notebook still pastes the model. Both are now **false**. Fix them the next time
-      either notebook is re-executed for another reason — editing the comment alone would clear
-      that cell's output and leave a committed notebook with an unexecuted cell.
+      this notebook still pastes the model. Both are now **false**. Filed as **issue #4** for
+      Yoav to do by hand (2026-09-29): `NotebookEdit` would clear that cell's output, but the
+      output is a single deterministic line, so in JupyterLab it is edit → run the one cell →
+      save. Issue #4 carries the replacement text and the expected outputs.
 - [x] Loads **four** checkpoints (`nanochat_best`, `nanochat_sft_best`,
       `nanochat_grpo_checkpoint`, `nanochat_grpo_judge_checkpoint`) and asserts they agree on
       cfg, vocab and merges. `nanochat_grpo_best.pkl` is gone from the notebook entirely
