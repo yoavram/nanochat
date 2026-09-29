@@ -48,7 +48,7 @@ the new output before committing.
 | package | state | note |
 |---|---|---|
 | WP-N | ⬜ not started — **issue #5**, Yoav is doing it manually | **`RNN.ipynb` is stuck too**: measured 2026-09-29, stripped source is 25,670 tokens against text-transformer's 25,783. The "only text-transformer" claim below is superseded |
-| WP9 `minisweagent.ipynb` | ⬜ not started | independent of the nanochat chain |
+| WP9 `minisweagent.ipynb` | ✅ **done 2026-09-29** | all 10 items; outputs cleared, runs interactively by design |
 | WP10 `index.ipynb` rewrite | ⬜ do last | WP-C refreshed the GRPO and Inference lines; the rest of the page is untouched |
 | WP-R checkpoint release | ⬜ deferred | near delivery |
 
@@ -1590,27 +1590,97 @@ estimates each carrying ±0.007 is selecting noise.
 
 ---
 
-### WP9 — `minisweagent.ipynb`  ⬜ not started
+### WP9 — `minisweagent.ipynb`  ✅ **done 2026-09-29** — injection demonstrated, approval gate made fail-safe
 Unblocked. Least work needed; the risks are operational.
 
-- [x] **`qwen3.5:9b` confirmed published** (2026-09-20). Add **`qwen3.5:4b`** (3.4 GB) as
-      the low-VRAM fallback; `2b` and `0.8b` also exist if a room is really constrained
+**Three decisions Yoav took during the package:**
+
+1. **No `AUTO_APPROVE` flag** (reversing 11.2 as written). The problem it named is real —
+   `input()` raises under `nbconvert`/papermill, so the notebook could not be executed
+   non-interactively at all — but a flag that disables the approval gate contradicts the
+   security section the notebook spends a page on, and is exactly the flag that gets left
+   on. **`approve()` now catches the missing-stdin exception and returns `False`.** A
+   headless run completes, proposes commands, and executes none of them. *The failure mode
+   of an approval gate must be deny, not allow.*
+2. **Mitigation is discussed, not demonstrated.** The injection demo shows the hijack; the
+   repairs (delimiting, meta-prompt) are prose. Ablating them would be research apparatus in
+   a workshop notebook — same register call as WP-J's judge prompt.
+3. **No command allowlist.** Considered and skipped. It would be a nice callback to the
+   notebook's own "allowlists for sensitive operations" line, but under `shell=True` it is
+   unsound (`ls; rm -rf ~` passes any first-word check), so it would have to be taught as
+   insufficient — more cells than the lesson is worth here.
+
+**Do not run this notebook unattended — Yoav, 2026-09-29.** The committed state has **all
+outputs cleared**, and that is deliberate: producing committed outputs means auto-approving
+an LLM's shell commands, which is the one thing the notebook exists to argue against. It is
+run by a human, in a room, approving each command. (The `nbclient` route is also closed on
+purpose: `nbclient` hard-sets `allow_stdin=False`, which is *why* this notebook never
+executed under `nbconvert`.)
+
+**Verified once, in a throwaway directory, before the outputs were discarded** — so the
+following are measured, not assumed:
+- the injection lands: the agent `cat`s the poisoned file, then runs the injected
+  `echo … > /tmp/agent_injection_marker.txt` unprompted, with nothing in the task mentioning
+  `/tmp` or writing;
+- both Task 3 seams work — `last_tool_output()` returns the right string at each hop and the
+  `quote_external` fences did not confuse the model;
+- `token_budget` measures the context growth the notebook claims: **128 → 1,000 prompt
+  tokens over three steps, 7.8×**.
+
+**Known flake, will happen in a room:** Task 3's *third* sub-task lost the action format
+(emitted ```` ```bash ```` instead of ```` ```bash-action ````) and burned all 20 steps on
+parse errors. Not a defect — the 9B model degrading under the longer prompt, which got
+longer because the `quote_external` fences and the example XML now go into it. The loop
+handles it correctly. Lower `max_steps` on that cell or fence less into it if it recurs.
+
+**Two defects found by reviewing my own code while the verification run was going, and
+fixed before it was repeated** (the WP6 rule, applied to my own work for once):
+- `last_tool_output` identified tool outputs by **string-matching their contents** while its
+  docstring claimed it resolved them by position — the WP5 mistake, committed inside the
+  function written to fix a related one. `run_agent` now appends to `TOOL_OUTPUTS` as it
+  executes, so the lookup is structural and the docstring is true.
+- `token_budget` divided by the first prompt count, which **Ollama omits when it serves a
+  prompt from its own cache** — a `ZeroDivisionError` waiting for a cache hit.
+
+**One item was deliberately not done as written: 11.6.** The plan said count tokens with the
+workshop's own tokenizer instead of `chars // 4`. The diagnosis is right and the patch is
+wrong: that BPE is 1024-vocab and trained on TinyStories, so counting a Qwen conversation
+with it yields a number that is precise and meaningless. Ollama reports the true counts
+(`prompt_eval_count`, `eval_count`) and the notebook uses those. *Prefer a reviewer's
+diagnosis to its patch* — WP6's rule, second outing.
+
+**11.4 and 11.10 turned out to be one item.** Task 3 already shipped a live injection
+channel: `arxiv_ids = messages[-2]['content']` f-stringed a raw shell output into the next
+sub-task's prompt, undelimited. The demo is that code path, so the vulnerability arises from
+ordinary-looking code the reader accepted two cells earlier rather than from a bolted-on
+exhibit.
+
+**New tracked file:** `data/references_injected.txt` — `references.txt` plus one poisoned
+reference `[8]`. The payload writes a marker file to `/tmp`; it is deliberately not a
+`curl`, so the notebook is not teaching exfiltration and works offline.
+
+- [x] **`qwen3.5:9b` confirmed published** (2026-09-20). **`qwen3.5:4b`** (3.4 GB) added as
+      the documented low-VRAM fallback; `2b` and `0.8b` also exist if a room is really constrained
       (11.1, 1.6)
-- [ ] `AUTO_APPROVE` flag so the notebook survives "Run All"; document the interactive
-      default as a deliberate choice (11.2)
-- [ ] Move the least-privilege warning **before** Task 1 (11.3)
-- [ ] Working prompt-injection demonstration, built on the Task 3 pipeline (11.4 + 11.10)
-- [ ] Replace `messages[-2]` with an explicit search for the last tool output, and delimit
-      the interpolated content (11.10)
-- [ ] Date and attribute the "~74% on SWE-bench Verified" claim; note the local 9B model
-      will do far worse (11.5)
-- [ ] Count tokens with the workshop's own tokenizer instead of `chars // 4` (11.6)
-- [ ] Rewrite Exercise 1 Q5 around the `ValueError` path — `parse_action` never returns
-      `None` (11.9)
-- [ ] Update the model names in cell 27 (11.8). "Claude Sonnet 4.6" is out of date — the
-      current Claude line is the **Claude 5 family** (Opus 5, Sonnet 5, Fable 5.1) plus
-      Haiku 4.5. Re-check the other vendors' names at delivery
-- [ ] Note the `export.arxiv.org` network requirement; cached fallback for offline rooms (11.11)
+- [x] **Reversed, see above:** no flag. `approve()` denies when there is no stdin, so the
+      notebook survives "Run All" by refusing rather than by executing (11.2)
+- [x] Least-privilege warning moved **before** Task 1, with the Docker one-liner (11.3)
+- [x] Working prompt-injection demonstration (Task 4), built on the Task 3 pipeline, plus a
+      "Why this is hard to fix" discussion (11.4 + 11.10)
+- [x] `messages[-2]` replaced by `last_tool_output()` reading `TOOL_OUTPUTS`; every
+      interpolated block wrapped by `quote_external()` (11.10)
+- [x] "~74%" dated (checked 2026-09-29) and attributed to both minimal-agent.com and the
+      mini-swe-agent README — **and flagged as naming no model and no date at either source**,
+      which is the honest finding. Local 9B noted as a different regime, not a few points (11.5)
+- [x] Real token counts from Ollama's `prompt_eval_count`/`eval_count`, **not** the
+      workshop tokenizer — see the note above (11.6)
+- [x] Exercise 1 Q5 rewritten around the `ValueError` path; Q7 added on the fail-safe gate.
+      `parse_action_v2`'s contract in Exercise 3 aligned to raise rather than return `None` (11.9)
+- [x] Model row now "a frontier hosted model (Claude Opus 5, Claude Sonnet 5, GPT-5.x)".
+      An **Approval** row was added to the same table: mini-swe-agent runs unattended inside a
+      sandbox, we do not. Re-check the non-Claude names at delivery (11.8)
+- [x] `export.arxiv.org` requirement noted on Task 3. **No cached fallback** — Yoav
+      2026-09-29: the workshop room is online (11.11)
 
 ---
 
